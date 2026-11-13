@@ -27,6 +27,8 @@ function modelFit(
 ): { level: Fit; note: string } {
   // Сколько примерно занимает в памяти (ГБ) — по факту распаковки, не по размеру архива.
   const ramNeedGb: Record<string, number> = {
+    sensevoice: 1.0,
+    "qwen3-asr-06b": 3.0,
     gigaam: 0.7,
     parakeet: 1.3,
     "whisper-small": 1.3,
@@ -40,9 +42,14 @@ function modelFit(
   }
 
   // Сильная машина: есть ускоритель (GPU/Apple Silicon) ИЛИ быстрый многоядерный CPU.
-  const strong =
-    sys.llmAccel === "gpu" || !!sys.gpuName || (sys.physicalCores >= 8 && sys.speed !== "slow");
+  const strong = sys.physicalCores >= 8 && sys.speed !== "slow";
 
+  // Conservative CPU estimate; CUDA availability and free VRAM are shown separately.
+  if (m.id === "qwen3-asr-06b") {
+    return sys.physicalCores >= 8 && sys.speed !== "slow"
+      ? { level: "ok", note: t.modelSelector.noteWillBeSlow }
+      : { level: "heavy", note: t.modelSelector.noteVerySlowCpu };
+  }
   if (m.id === "whisper-turbo") {
     // large-v3-turbo тяжёлый: на сильной машине приемлемо, на слабой — очень медленно.
     return strong
@@ -165,6 +172,11 @@ export default function ModelSelector() {
                 {t.models[m.id]?.lang ?? m.lang} · {t.common.mb(m.sizeMb)}
                 {!m.installed && ` · ${t.common.notDownloaded}`}
               </span>
+              {t.models[m.id]?.description && (
+                <span className="mt-1 block text-xs leading-relaxed text-zinc-400">
+                  {t.models[m.id].description}
+                </span>
+              )}
               <FitBadge m={m} sys={sys} />
               {error[m.id] && <span className="block text-xs text-red-400">{error[m.id]}</span>}
             </span>

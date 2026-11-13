@@ -1,6 +1,6 @@
 //! Детект GPU — решаем, ускорять ли «Итоги» видеокартой (Vulkan-бэкенд llama-server).
 //! Windows: DXGI (DedicatedVideoMemory 64-битный — CIM/wmic врут после 4 ГБ).
-//! ASR это не касается: int8-модели sherpa на GPU не быстрее (замерено в Фазе 0).
+//! ASR CUDA discovery and selection live separately in `asr_runtime`.
 
 pub struct GpuInfo {
     pub name: String,

@@ -58,10 +58,10 @@ pub fn diarize(
     };
 
     let diar = OfflineSpeakerDiarization::create(&config)
-        .ok_or("failed to create the diarizer (check segmentation/embedding models)")?;
+        .ok_or(crate::engine::localization::error("failed to create the diarizer (check segmentation/embedding models)"))?;
     let result = diar
         .process(samples)
-        .ok_or("diarization produced no result")?;
+        .ok_or(crate::engine::localization::error("diarization produced no result"))?;
 
     Ok(result
         .sort_by_start_time()
@@ -115,8 +115,7 @@ pub fn words_to_replicas(words: &[Word], segs: &[Segment]) -> String {
         let spk = if force_single { 0 } else { assign_speaker(w, &d) };
         match turns.last_mut() {
             Some(last) if last.speaker == spk => {
-                last.text.push(' ');
-                last.text.push_str(&w.text);
+                super::text::append(&mut last.text, &w.text);
                 last.end = w.end.max(last.end);
             }
             _ => turns.push(Turn {
@@ -197,8 +196,7 @@ fn smooth_islands(turns: &mut Vec<Turn>) {
         if island {
             let cur = turns.remove(i);
             turns[i - 1].end = cur.end;
-            turns[i - 1].text.push(' ');
-            turns[i - 1].text.push_str(&cur.text);
+            super::text::append(&mut turns[i - 1].text, &cur.text);
             // возможно, сразу склеим с правым соседом того же спикера
             if i < turns.len()
                 && turns[i].speaker == turns[i - 1].speaker
@@ -206,8 +204,7 @@ fn smooth_islands(turns: &mut Vec<Turn>) {
             {
                 let nxt = turns.remove(i);
                 turns[i - 1].end = nxt.end;
-                turns[i - 1].text.push(' ');
-                turns[i - 1].text.push_str(&nxt.text);
+                super::text::append(&mut turns[i - 1].text, &nxt.text);
             }
             // не увеличиваем i — перепроверяем позицию
             continue;
@@ -224,8 +221,7 @@ fn merge_adjacent(turns: Vec<Turn>) -> Vec<Turn> {
                 if last.speaker == t.speaker && (t.start - last.end) <= MERGE_GAP_SEC =>
             {
                 last.end = t.end;
-                last.text.push(' ');
-                last.text.push_str(&t.text);
+                super::text::append(&mut last.text, &t.text);
             }
             _ => out.push(t),
         }

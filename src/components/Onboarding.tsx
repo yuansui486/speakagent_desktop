@@ -10,16 +10,18 @@ import {
   type DlProgress,
 } from "../lib/api";
 import { useUi } from "../store/ui";
-import { useT } from "../i18n";
+import { useT, useLang } from "../i18n";
 
 export default function Onboarding() {
   const t = useT();
+  const lang = useLang((s) => s.lang);
+  const recommendedModel = lang === "zh" ? "sensevoice" : "gigaam";
   const qc = useQueryClient();
   const closeSetup = useUi((s) => s.closeSetup);
   const { data: models } = useQuery({ queryKey: ["models"], queryFn: listModels });
 
   const asr = (models ?? []).filter((m) => m.kind === "asr");
-  const [selected, setSelected] = useState("gigaam");
+  const [selected, setSelected] = useState(recommendedModel);
   const [pct, setPct] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +49,7 @@ export default function Onboarding() {
 
   return (
     <div className="anim-fade fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/85 p-6 backdrop-blur-md">
-      <div className="anim-in glass w-full max-w-lg rounded-2xl border border-white/10 p-8">
+      <div className="anim-in glass max-h-[calc(100vh-3rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 p-8">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-500/15">
             <AudioLines className="text-amber-500" size={22} />
@@ -74,7 +76,7 @@ export default function Onboarding() {
                 key={m.id}
                 model={m}
                 active={selected === m.id}
-                recommended={m.id === "gigaam"}
+                recommended={m.id === recommendedModel}
                 disabled={busy}
                 onClick={() => !busy && setSelected(m.id)}
               />
@@ -175,6 +177,11 @@ function ModelRow({
         <span className="block text-xs text-zinc-500">
           {t.models[model.id]?.lang ?? model.lang} · {t.common.mb(model.sizeMb)}
         </span>
+        {t.models[model.id]?.description && (
+          <span className="mt-1 block text-xs leading-relaxed text-zinc-400">
+            {t.models[model.id].description}
+          </span>
+        )}
       </span>
       {model.installed && <Check size={15} className="shrink-0 text-emerald-400" />}
     </button>

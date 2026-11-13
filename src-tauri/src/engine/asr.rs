@@ -3,34 +3,16 @@
 //! посреди слова (иначе «мусор» на стыках). Если модель VAD недоступна — слепые окна.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
-use sherpa_onnx::{
-    OfflineNemoEncDecCtcModelConfig, OfflineRecognizer, OfflineRecognizerConfig,
-    OfflineTransducerModelConfig, OfflineWhisperModelConfig, SileroVadModelConfig, VadModelConfig,
-    VoiceActivityDetector,
-};
+use sherpa_onnx::{OfflineRecognizer, SileroVadModelConfig, VadModelConfig, VoiceActivityDetector};
 
 const SR: i32 = 16000;
 const CHUNK_SEC: usize = 20; // слепой фолбэк, если нет VAD
 const VAD_WINDOW: usize = 512; // окно Silero VAD (samples)
 const VAD_MAX_SPEECH_SEC: f32 = 20.0; // не даём offline-CTC слишком длинный кусок
 
-/// Тип движка модели.
-pub enum Engine {
-    NemoCtc,    // GigaAM
-    Transducer, // Parakeet (nemo_transducer)
-    Whisper,    // Whisper
-}
-
-/// Пути к файлам активной модели + её тип.
-pub struct AsrFiles {
-    pub engine: Engine,
-    pub model: String,   // ctc: model; transducer/whisper: encoder
-    pub decoder: String, // transducer/whisper: decoder; ctc: ""
-    pub joiner: String,  // transducer: joiner; иначе ""
-    pub tokens: String,
-    pub language: String, // whisper: язык ("ru"); иначе ""
-}
+pub use super::asr_config::{AsrFiles, Engine};
 
 /// Слово с временем начала и конца (сек от начала файла) — для привязки к спикерам.
 pub struct Word {
@@ -41,47 +23,30 @@ pub struct Word {
 
 /// Распознаватель с загруженной моделью. Создаётся один раз, переиспользуется.
 pub struct Asr {
-    rec: OfflineRecognizer,
+    backend: Mutex<Backend>,
+    files: AsrFiles,
     threads: i32,
+}
+
+enum Backend {
+    Cpu(OfflineRecognizer),
+    Cuda(super::asr_runtime::CudaWorker),
+    Failed,
 }
 
 impl Asr {
     pub fn load(f: &AsrFiles, num_threads: i32) -> Result<Self, String> {
-        let mut config = OfflineRecognizerConfig::default();
-        match f.engine {
-            Engine::NemoCtc => {
-                config.model_config.nemo_ctc = OfflineNemoEncDecCtcModelConfig {
-                    model: Some(f.model.clone()),
-                };
-            }
-            Engine::Transducer => {
-                config.model_config.transducer = OfflineTransducerModelConfig {
-                    encoder: Some(f.model.clone()),
-                    decoder: Some(f.decoder.clone()),
-                    joiner: Some(f.joiner.clone()),
-                };
-                config.model_config.model_type = Some("nemo_transducer".into());
-            }
-            Engine::Whisper => {
-                config.model_config.whisper = OfflineWhisperModelConfig {
-                    encoder: Some(f.model.clone()),
-                    decoder: Some(f.decoder.clone()),
-                    language: if f.language.is_empty() {
-                        None
-                    } else {
-                        Some(f.language.clone())
-                    },
-                    ..Default::default()
-                };
-            }
+        match super::asr_runtime::try_worker(f, num_threads) {
+            Ok(Some(worker)) => return Ok(Self { backend: Mutex::new(Backend::Cuda(worker)), files: f.clone(), threads: num_threads }),
+            Ok(None) => super::asr_runtime::record("cpu", None),
+            Err(reason) => super::asr_runtime::record("cpu", Some(reason)),
         }
-        config.model_config.tokens = Some(f.tokens.clone());
-        config.model_config.num_threads = num_threads;
-
+        let config = f.config(num_threads, "cpu");
         let rec = OfflineRecognizer::create(&config)
-            .ok_or("failed to create the recognizer (check model files)")?;
+            .ok_or(crate::engine::localization::error("failed to create the recognizer (check model files)"))?;
         Ok(Self {
-            rec,
+            backend: Mutex::new(Backend::Cpu(rec)),
+            files: f.clone(),
             threads: num_threads,
         })
     }
@@ -95,11 +60,7 @@ impl Asr {
         on_chunk: impl FnMut(usize, usize, &str),
     ) -> String {
         let words = self.transcribe_words(samples, vad_model, cancel, on_chunk);
-        words
-            .iter()
-            .map(|w| w.text.as_str())
-            .collect::<Vec<_>>()
-            .join(" ")
+        join_text(&words)
     }
 
     /// Файл целиком → слова с таймкодами. VAD-нарезка (если есть модель) или слепые окна.
@@ -175,7 +136,9 @@ impl Asr {
         if let Some(res) = self.decode(seg) {
             match res.timestamps {
                 // Пословные таймкоды (GigaAM/Parakeet CTC/transducer) → точная привязка к спикерам.
-                Some(times) if !times.is_empty() => push_words(&res.tokens, &times, offset, out),
+                Some(times) if !times.is_empty() && times.len() == res.tokens.len() => {
+                    push_words(&res.tokens, &times, offset, out);
+                },
                 // Whisper даёт текст, но timestamps=Some(пусто) → берём текст сегмента целиком
                 // (диаризация огрубляется до границы VAD-сегмента — у whisper пословных нет).
                 _ => {
@@ -212,19 +175,32 @@ impl Asr {
     }
 
     fn decode(&self, seg: &[f32]) -> Option<sherpa_onnx::OfflineRecognizerResult> {
-        let stream = self.rec.create_stream();
+        let mut backend = self.backend.lock().unwrap();
+        if let Backend::Cuda(worker) = &mut *backend {
+            match worker.decode(seg) {
+                Ok(result) => { super::asr_runtime::record("cuda", None); return Some(result); }
+                Err(error) => {
+                    super::asr_runtime::record("cpu", Some(error));
+                    // Release the GPU model and kill the worker before allocating
+                    // a second copy of the model in the main process.
+                    *backend = Backend::Failed;
+                    // Decode the SAME segment on CPU; no spoken text is discarded.
+                    let config = self.files.config(self.threads, "cpu");
+                    let cpu = OfflineRecognizer::create(&config)?;
+                    *backend = Backend::Cpu(cpu);
+                }
+            }
+        }
+        let Backend::Cpu(rec) = &*backend else { return None; };
+        let stream = rec.create_stream();
         stream.accept_waveform(SR, seg);
-        self.rec.decode(&stream);
+        rec.decode(&stream);
         stream.get_result()
     }
 }
 
-fn join_text(words: &[Word]) -> String {
-    words
-        .iter()
-        .map(|w| w.text.as_str())
-        .collect::<Vec<_>>()
-        .join(" ")
+pub fn join_text(words: &[Word]) -> String {
+    super::text::join(words.iter().map(|w| w.text.as_str()))
 }
 
 /// Гарантируем ненулевую ширину слова (для расчёта перекрытия при диаризации).
@@ -244,7 +220,16 @@ fn push_words(tokens: &[String], times: &[f32], offset: f32, out: &mut Vec<Word>
     let mut cur_end = offset;
     for (tok, &t) in tokens.iter().zip(times.iter()) {
         let tt = offset + t;
-        if tok == " " || tok.chars().all(char::is_whitespace) {
+        if tok.starts_with("<|") && tok.ends_with("|>") {
+            continue; // SenseVoice language/emotion/event metadata is not spoken text.
+        }
+        let token = tok.trim_start_matches('\u{2581}');
+        if token.chars().any(super::text::is_cjk) {
+            if !cur.is_empty() {
+                out.push(Word { text: std::mem::take(&mut cur), start, end: cur_end.max(start) });
+            }
+            out.push(Word { text: token.to_owned(), start: tt, end: tt });
+        } else if tok == " " || tok.chars().all(char::is_whitespace) {
             // char-модель: пробел = граница слова
             if !cur.is_empty() {
                 out.push(Word {
@@ -279,5 +264,24 @@ fn push_words(tokens: &[String], times: &[f32], offset: f32, out: &mut Vec<Word>
             start,
             end: cur_end.max(start),
         });
+    }
+}
+
+
+#[cfg(test)]
+mod chinese_tests {
+    use super::*;
+
+    #[test]
+    fn chinese_tokens_keep_individual_timestamps_without_metadata() {
+        let tokens: Vec<String> = ["<|zh|>", "<|NEUTRAL|>", "你", "好", "world", "▁again"].iter().map(|s| s.to_string()).collect();
+        let mut words = Vec::new();
+        push_words(&tokens, &[0.0, 0.0, 0.1, 0.2, 0.3, 0.4], 2.0, &mut words);
+        finalize_word_ends(&mut words);
+        assert_eq!(join_text(&words), "你好world again");
+        assert_eq!(words.len(), 4);
+        assert!((words[0].start - 2.1).abs() < 0.001);
+        assert!((words[1].start - 2.2).abs() < 0.001);
+        assert!(words.iter().all(|word| word.end > word.start));
     }
 }

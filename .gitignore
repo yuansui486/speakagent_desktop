@@ -1,5 +1,6 @@
 # ── Node / UI ─────────────────────────────
 node_modules/
+/.cache/cuda/
 ui/dist/
 dist/
 *.log

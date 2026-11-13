@@ -7,4 +7,8 @@ const en: T = {
   recognizing: "Recognizing…",
   recording: "Recording…",
 };
-export const overlay = { ru, en };
+const zh: T = {
+  recognizing: "正在识别…", recording: "正在录音…",
+};
+
+export const overlay = { ru, en, zh };

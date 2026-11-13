@@ -57,6 +57,20 @@ export interface Usage {
   ramUsedPct: number;
 }
 export const systemInfo = () => invoke<SystemInfo>("system_info");
+export type AsrProvider = "auto" | "cpu" | "cuda";
+export interface AsrAccelerationInfo {
+  preference: AsrProvider;
+  devices: { index: number; name: string; driverVersion: string; totalMemoryMb: number; freeMemoryMb: number; computeCapability: string }[];
+  driverCudaVersion: string | null;
+  toolkitVersion: string | null;
+  runtimeInstalled: boolean;
+  runtime: { cudaRuntimeVersion: number | null; cudnnVersion: number | null; onnxruntimeVersion: string | null; missingLibraries: string[]; sherpaVersion: string | null } | null;
+  detectionError: string | null;
+  lastProvider: "cpu" | "cuda" | null;
+  fallbackReason: string | null;
+}
+export const asrAccelerationInfo = () => invoke<AsrAccelerationInfo>("asr_acceleration_info");
+export const setAsrProvider = (provider: AsrProvider) => invoke<void>("set_asr_provider", { provider });
 export const probeDuration = (path: string) => invoke<number | null>("probe_duration", { path });
 export const resourceUsage = () => invoke<Usage>("resource_usage");
 export const saveText = (content: string, path: string) =>
@@ -210,8 +224,8 @@ export const testCloud = (url: string, model: string, key: string) =>
   invoke<string>("test_cloud", { url, model, key });
 
 // ── Язык приложения (UI + промпты LLM) ──
-export type UiLang = "ru" | "en";
-/** Текущий язык приложения из настроек (по умолчанию "ru"). */
+export type UiLang = "zh" | "ru" | "en";
+/** Текущий язык приложения из настроек (по умолчанию "zh"). */
 export const uiLanguage = () => invoke<UiLang>("ui_language");
 /** Сохранить язык приложения (влияет и на язык вывода «Итогов»). */
 export const setUiLanguage = (lang: UiLang) => invoke<void>("set_ui_language", { lang });

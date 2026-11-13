@@ -7,7 +7,7 @@ const ru = {
 
   // Короткие заметки-подсказки к оценке пригодности.
   noteLowRam: "мало оперативной памяти",
-  noteMostAccurateSlower: "самая точная, но помедленнее",
+  noteMostAccurateSlower: "устойчива к шуму, но медленнее",
   noteVerySlowCpu: "очень медленно на этом процессоре",
   noteWillBeSlow: "будет медленно",
   noteSlightlySlower: "чуть медленнее",
@@ -24,7 +24,7 @@ const en: T = {
   fitHeavy: "Heavy for this PC",
 
   noteLowRam: "not enough RAM",
-  noteMostAccurateSlower: "most accurate, but slower",
+  noteMostAccurateSlower: "more robust to noise, but slower",
   noteVerySlowCpu: "very slow on this CPU",
   noteWillBeSlow: "will be slow",
   noteSlightlySlower: "slightly slower",
@@ -32,4 +32,10 @@ const en: T = {
   hwEstimateTitle: (hw) => `Hardware estimate: ${hw}`,
 };
 
-export const modelSelector = { ru, en };
+const zh: T = {
+  fitGood: "非常适合", fitOk: "可以运行", fitHeavy: "本机运行较吃力",
+  noteLowRam: "内存不足", noteMostAccurateSlower: "抗噪较好，但速度较慢", noteVerySlowCpu: "在此处理器上运行很慢",
+  noteWillBeSlow: "运行速度较慢", noteSlightlySlower: "速度稍慢", hwEstimateTitle: (hw) => `根据本机硬件估算：${hw}`,
+};
+
+export const modelSelector = { ru, en, zh };

@@ -83,7 +83,7 @@ fn audio_engine(rx: mpsc::Receiver<Cmd>) {
                     match open_stream(&device, shared.clone()) {
                         Ok(s) => {
                             if let Err(e) = s.play() {
-                                let _ = reply.send(Err(format!("microphone failed to start: {e}")));
+                                let _ = reply.send(Err(crate::engine::localization::error(&format!("microphone failed to start: {e}"))));
                                 continue;
                             }
                             stream = Some(s);
@@ -148,10 +148,10 @@ fn feed(shared: &Mutex<AudioBuf>, samples: impl Iterator<Item = f32>) {
 
 fn open_stream(device_name: &str, shared: Arc<Mutex<AudioBuf>>) -> Result<cpal::Stream, String> {
     let host = cpal::default_host();
-    let device = pick_device(&host, device_name).ok_or("microphone not found")?;
+    let device = pick_device(&host, device_name).ok_or(crate::engine::localization::error("microphone not found"))?;
     let config = device
         .default_input_config()
-        .map_err(|e| format!("microphone config: {e}"))?;
+        .map_err(|e| crate::engine::localization::error(&format!("microphone config: {e}")))?;
     let src_rate = config.sample_rate().0;
     let channels = config.channels();
     {
@@ -196,9 +196,9 @@ fn open_stream(device_name: &str, shared: Arc<Mutex<AudioBuf>>) -> Result<cpal::
                 None,
             )
         }
-        other => return Err(format!("unsupported microphone format: {other:?}")),
+        other => return Err(crate::engine::localization::error(&format!("unsupported microphone format: {other:?}"))),
     }
-    .map_err(|e| format!("failed to open microphone: {e}"))?;
+    .map_err(|e| crate::engine::localization::error(&format!("failed to open microphone: {e}")))?;
     Ok(stream)
 }
 
@@ -281,8 +281,11 @@ fn ensure_worker() -> Sender<Job> {
             match job {
                 Job::Transcribe(pcm, reply) => {
                     let want = models::dict_asr_id();
-                    let reload = warm.as_ref().map(|(id, _)| id != &want).unwrap_or(true);
+                    let cache_key = format!("{want}:{}", super::asr_runtime::preference());
+                    let reload = warm.as_ref().map(|(id, _)| id != &cache_key).unwrap_or(true);
                     if reload {
+                        // Free the old model/worker before allocating another one.
+                        drop(warm.take());
                         let loaded = models::dict_asr_files()
                             .ok_or_else(|| {
                                 "Dictation recognition model is not installed. Open Settings."
@@ -290,7 +293,7 @@ fn ensure_worker() -> Sender<Job> {
                             })
                             .and_then(|f| Asr::load(&f, num_threads()));
                         match loaded {
-                            Ok(asr) => warm = Some((want.clone(), asr)),
+                            Ok(asr) => warm = Some((cache_key, asr)),
                             Err(e) => {
                                 let _ = reply.send(Err(e));
                                 continue;

@@ -14,4 +14,8 @@ const en: T = {
   moveTo: "Move to…",
 };
 
-export const speakers = { ru, en };
+const zh: T = {
+  mergeTitle: "点击将此说话人与另一位合并", mergeWith: "合并到…", reassignTitle: "将此发言分配给另一位说话人", moveTo: "移动到…",
+};
+
+export const speakers = { ru, en, zh };

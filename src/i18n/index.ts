@@ -1,4 +1,4 @@
-// Лёгкий самописный i18n-слой (RU/EN). Один источник истины — настройка `ui_lang`
+// Лёгкий самописный i18n-слой (ZH/RU/EN). Один источник истины — настройка `ui_lang`
 // (SQLite на бэке); localStorage используется как мгновенное зеркало для первой
 // отрисовки без «мигания». Язык влияет и на UI-строки, и на локаль дат/чисел, и —
 // через ту же настройку на бэке — на язык вывода «Итогов встречи».
@@ -27,9 +27,10 @@ import { overlay } from "./dict/overlay";
 import { exportMenu } from "./dict/exportMenu";
 import { dragDrop } from "./dict/dragDrop";
 import { perf } from "./dict/perf";
+import { acceleration } from "./dict/acceleration";
 
-// Словарь собирается из самодостаточных фрагментов (каждый несёт ru+en и сам
-// проверяет их паритет). `ru` — источник структуры типа, `en` обязан ей соответствовать.
+// Словарь собирается из самодостаточных фрагментов (каждый несёт zh+ru+en и сам
+// проверяет их паритет). `ru` — источник структуры типа, `en` и `zh` обязаны ей соответствовать.
 const ru = {
   common: common.ru,
   models: models.ru,
@@ -54,6 +55,7 @@ const ru = {
   exportMenu: exportMenu.ru,
   dragDrop: dragDrop.ru,
   perf: perf.ru,
+  acceleration: acceleration.ru,
 };
 
 const en = {
@@ -80,27 +82,61 @@ const en = {
   exportMenu: exportMenu.en,
   dragDrop: dragDrop.en,
   perf: perf.en,
+  acceleration: acceleration.en,
 };
 
-export type Lang = UiLang; // "ru" | "en"
+const zh = {
+  common: common.zh,
+  models: models.zh,
+  nav: nav.zh,
+  statusBar: statusBar.zh,
+  progress: progress.zh,
+  home: home.zh,
+  transcribe: transcribe.zh,
+  dictation: dictation.zh,
+  about: about.zh,
+  mcp: mcp.zh,
+  settings: settings.zh,
+  onboarding: onboarding.zh,
+  meeting: meeting.zh,
+  resultView: resultView.zh,
+  beautify: beautify.zh,
+  speakers: speakers.zh,
+  aiProvider: aiProvider.zh,
+  modelSelector: modelSelector.zh,
+  diagnostics: diagnostics.zh,
+  overlay: overlay.zh,
+  exportMenu: exportMenu.zh,
+  dragDrop: dragDrop.zh,
+  perf: perf.zh,
+  acceleration: acceleration.zh,
+};
+
+export type Lang = UiLang; // "zh" | "ru" | "en"
 export type Dict = typeof ru;
 
-const dictionaries: Record<Lang, Dict> = { ru, en };
+const dictionaries: Record<Lang, Dict> = { zh, ru, en };
 const STORAGE_KEY = "ui_lang";
 
 function detectInitial(): Lang {
   try {
     const s = localStorage.getItem(STORAGE_KEY);
-    if (s === "ru" || s === "en") return s;
+    if (s === "zh" || s === "ru" || s === "en") return s;
   } catch {
     /* ignore */
   }
-  return "ru";
+  return "zh";
 }
 
 // Модульное зеркало текущего языка — для доступа из не-React утилит
 // (format.ts, perf.ts, diarize.ts, api.ts, exporters.ts).
 let _lang: Lang = detectInitial();
+let languageRevision = 0;
+
+function updateDocumentLanguage(lang: Lang): void {
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : lang;
+}
+updateDocumentLanguage(_lang);
 
 /** Текущий язык (императивно, вне React). */
 export const getLang = (): Lang => _lang;
@@ -116,7 +152,9 @@ interface LangState {
 export const useLang = create<LangState>((set) => ({
   lang: _lang,
   setLang: (l) => {
+    languageRevision += 1;
     _lang = l;
+    updateDocumentLanguage(l);
     try {
       localStorage.setItem(STORAGE_KEY, l);
     } catch {
@@ -140,10 +178,14 @@ export function useT(): Dict {
  * лишь примиряем расхождение (например, после чистой установки или сброса localStorage).
  */
 export async function syncLangFromBackend(): Promise<void> {
+  const revision = languageRevision;
   try {
     const backend = await uiLanguage();
-    if ((backend === "ru" || backend === "en") && backend !== _lang) {
+    // A user selection made while this request was pending takes precedence.
+    if (revision !== languageRevision) return;
+    if ((backend === "zh" || backend === "ru" || backend === "en") && backend !== _lang) {
       _lang = backend;
+      updateDocumentLanguage(backend);
       try {
         localStorage.setItem(STORAGE_KEY, backend);
       } catch {
@@ -155,3 +197,15 @@ export async function syncLangFromBackend(): Promise<void> {
     /* ignore */
   }
 }
+
+// The recording overlay has its own webview and store. Follow language changes
+// from other windows without writing the same preference back to the backend.
+window.addEventListener("storage", (event) => {
+  if (event.key !== STORAGE_KEY) return;
+  const lang = event.newValue;
+  if (lang !== "zh" && lang !== "ru" && lang !== "en") return;
+  languageRevision += 1;
+  _lang = lang;
+  updateDocumentLanguage(lang);
+  useLang.setState({ lang });
+});

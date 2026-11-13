@@ -5,6 +5,8 @@
 //! Далее по SPEC: `vad`, `jobs`, `export`.
 
 pub mod asr;
+pub mod asr_config;
+pub mod asr_runtime;
 pub mod audio;
 pub mod decode;
 pub mod diarize;
@@ -17,3 +19,7 @@ pub mod prompts;
 pub mod punct;
 pub mod sound;
 pub mod store;
+
+pub mod localization;
+
+pub mod text;

@@ -450,11 +450,7 @@ fn transcribe_file(path: &str, diarize: bool, num_speakers: i32) -> Result<(Stri
         )?;
         engine::diarize::words_to_replicas(&words, &segs)
     } else {
-        words
-            .iter()
-            .map(|w| w.text.as_str())
-            .collect::<Vec<_>>()
-            .join(" ")
+        engine::asr::join_text(&words)
     };
 
     let id = new_id();

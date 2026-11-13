@@ -25,18 +25,20 @@ const CHARS_PER_TOKEN: f32 = 2.0;
 const CHUNK_CHARS: usize = 10_000; // map-шаг: влезает в 8k-контекст с запасом
 const IDLE_SHUTDOWN_SECS: u64 = 300; // выгрузить модель из RAM после 5 мин простоя
 
-/// Язык вывода LLM: RU по умолчанию, EN — если пользователь выбрал английский UI.
+/// Output language follows the interface; Simplified Chinese is the default.
 #[derive(Clone, Copy)]
 enum Lang {
+    Zh,
     Ru,
     En,
 }
 
-/// Язык вывода по настройке UI (`ui_lang`): "en" → English, иначе — русский.
+/// Read the persisted UI language; missing or invalid values use Chinese.
 fn out_lang() -> Lang {
     match crate::engine::store::get_setting("ui_lang").as_deref() {
         Some("en") => Lang::En,
-        _ => Lang::Ru,
+        Some("ru") => Lang::Ru,
+        _ => Lang::Zh,
     }
 }
 
@@ -92,12 +94,16 @@ impl ResultKind {
 
     fn prompt(self, lang: Lang) -> &'static str {
         match (self, lang) {
+            (Self::Summary, Lang::Zh) => prompts::SUMMARY_ZH,
             (Self::Summary, Lang::Ru) => prompts::SUMMARY,
             (Self::Summary, Lang::En) => prompts::SUMMARY_EN,
+            (Self::Business, Lang::Zh) => prompts::BUSINESS_ZH,
             (Self::Business, Lang::Ru) => prompts::BUSINESS,
             (Self::Business, Lang::En) => prompts::BUSINESS_EN,
+            (Self::Interview, Lang::Zh) => prompts::INTERVIEW_ZH,
             (Self::Interview, Lang::Ru) => prompts::INTERVIEW,
             (Self::Interview, Lang::En) => prompts::INTERVIEW_EN,
+            (Self::Todo, Lang::Zh) => prompts::TODO_ZH,
             (Self::Todo, Lang::Ru) => prompts::TODO,
             (Self::Todo, Lang::En) => prompts::TODO_EN,
         }
@@ -162,15 +168,15 @@ pub fn cloud_config() -> Option<(String, String, String)> {
 /// Проверка связи с облачным провайдером — мини-запрос. Ok(ответ) или понятная ошибка.
 pub fn cloud_test(url: &str, model: &str, key: &str) -> Result<String, String> {
     if key.trim().is_empty() {
-        return Err("provide a token".into());
+        return Err(crate::engine::localization::error("provide a token"));
     }
     let cancel = AtomicBool::new(false);
     let reply = cloud_chat(
         url,
         model,
         key,
-        "Ты проверяешь связь. Ответь коротко.",
-        "Ответь одним словом: ок",
+        "You are checking connectivity. Reply briefly.",
+        "Reply with one word: OK",
         0.4,
         8,
         &cancel,
@@ -212,20 +218,20 @@ fn cloud_chat(
         Err(ureq::Error::Status(code, r)) => {
             let detail = r.into_string().unwrap_or_default();
             let hint = match code {
-                401 | 403 => " — check the token",
-                402 => " — insufficient funds with the provider",
-                404 => " — check the address or the model name",
+                401 | 403 => crate::engine::localization::text(" — check the token", " — check the token", " — 请检查 API 密钥"),
+                402 => crate::engine::localization::text(" — insufficient funds with the provider", " — insufficient funds with the provider", " — 服务商账户余额不足"),
+                404 => crate::engine::localization::text(" — check the address or the model name", " — check the address or the model name", " — 请检查地址或模型名称"),
                 _ => "",
             };
-            return Err(format!("cloud provider: HTTP {code}{hint}. {}", truncate_chars(&detail, 300)));
+            return Err(crate::engine::localization::error(&format!("cloud provider: HTTP {code}{hint}. {}", truncate_chars(&detail, 300))));
         }
-        Err(e) => return Err(format!("cloud provider: {e}")),
+        Err(e) => return Err(crate::engine::localization::error(&format!("cloud provider: {e}"))),
     };
     let raw = resp.into_string().map_err(|e| e.to_string())?;
     let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
     let text = v["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string();
     if text.trim().is_empty() {
-        return Err("the cloud returned an empty response".into());
+        return Err(crate::engine::localization::error("the cloud returned an empty response"));
     }
     Ok(clean_output(&text))
 }
@@ -271,7 +277,7 @@ fn health(port: u16) -> bool {
 /// Запустить (или переиспользовать) llama-server с активной моделью. Возвращает порт.
 pub fn ensure_server() -> Result<u16, String> {
     let (bin, gguf) =
-        models::llm_files().ok_or("The summary model is not installed. Download it in Settings.")?;
+        models::llm_files().ok_or_else(|| crate::engine::localization::error("The summary model is not installed. Download it in Settings."))?;
     let active = models::active_llm_id();
     touch();
 
@@ -287,7 +293,7 @@ pub fn ensure_server() -> Result<u16, String> {
     // свободный порт: биндим :0, читаем номер, отпускаем
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .and_then(|l| l.local_addr())
-        .map_err(|e| format!("no free port: {e}"))?
+        .map_err(|e| crate::engine::localization::error(&format!("no free port: {e}")))?
         .port();
 
     // stderr сервера — в лог-файл (диагностика, если не стартует)
@@ -329,7 +335,7 @@ pub fn ensure_server() -> Result<u16, String> {
     }
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("failed to start the summary helper: {e}"))?;
+        .map_err(|e| crate::engine::localization::error(&format!("failed to start the summary helper: {e}")))?;
 
     // ждём готовности (большой GGUF с HDD грузится долго)
     let deadline = Instant::now() + Duration::from_secs(120);
@@ -342,7 +348,7 @@ pub fn ensure_server() -> Result<u16, String> {
         }
         if Instant::now() > deadline {
             let _ = child.kill();
-            return Err("the summary helper did not respond within 2 minutes".into());
+            return Err(crate::engine::localization::error("the summary helper did not respond within 2 minutes"));
         }
         std::thread::sleep(Duration::from_millis(300));
     }
@@ -361,11 +367,17 @@ fn spawn_error(status: std::process::ExitStatus) -> String {
     #[cfg(windows)]
     if status.code() == Some(-1073741515i32) {
         // 0xC0000135 STATUS_DLL_NOT_FOUND
-        return "A required Windows system component is missing (Microsoft Visual C++ Redistributable). \
-                Install it from here and try again: https://aka.ms/vs/17/release/vc_redist.x64.exe"
-            .into();
+        return crate::engine::localization::text(
+            "A required Windows system component is missing (Microsoft Visual C++ Redistributable). Install it from here and try again: https://aka.ms/vs/17/release/vc_redist.x64.exe",
+            "A required Windows system component is missing (Microsoft Visual C++ Redistributable). Install it from here and try again: https://aka.ms/vs/17/release/vc_redist.x64.exe",
+            "缺少必需的 Windows 系统组件（Microsoft Visual C++ 运行库）。请安装后重试：https://aka.ms/vs/17/release/vc_redist.x64.exe",
+        ).into();
     }
-    format!("the summary helper failed to start ({status}). Details: llama-server.log in the data folder")
+    format!("{} ({status}). {}", crate::engine::localization::text(
+        "the summary helper failed to start", "the summary helper failed to start", "摘要服务启动失败",
+    ), crate::engine::localization::text(
+        "Details: llama-server.log in the data folder", "Details: llama-server.log in the data folder", "详细信息请查看数据文件夹中的 llama-server.log",
+    ))
 }
 
 /// Раз в минуту проверяем простой; после 5 минут без запросов выгружаем модель из RAM.
@@ -422,7 +434,7 @@ fn chat_stream(
         .set("Content-Type", "application/json")
         .timeout(Duration::from_secs(30 * 60)) // CPU-генерация бывает долгой
         .send_string(&body.to_string())
-        .map_err(|e| format!("summary helper: {e}"))?;
+        .map_err(|e| crate::engine::localization::error(&format!("summary helper: {e}")))?;
 
     let mut out = String::new();
     let reader = BufReader::new(resp.into_reader());
@@ -559,6 +571,7 @@ pub fn generate(
 
     // 3) map-reduce: конспектируем фрагменты → дайджест → финальный проход
     let chunk_prompt = match lang {
+        Lang::Zh => prompts::SUMMARIZE_CHUNK_ZH,
         Lang::Ru => prompts::SUMMARIZE_CHUNK,
         Lang::En => prompts::SUMMARIZE_CHUNK_EN,
     };
@@ -631,14 +644,30 @@ fn strip_num_prefix(s: &str) -> &str {
 fn split_words(text: &str, max_chars: usize) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut cur = String::new();
+    let max_chars = max_chars.max(1);
     for word in text.split_whitespace() {
-        if !cur.is_empty() && cur.chars().count() + word.chars().count() + 1 > max_chars {
+        let word_len = word.chars().count();
+        if !cur.is_empty() && cur.chars().count() + word_len + 1 > max_chars {
             out.push(std::mem::take(&mut cur));
         }
-        if !cur.is_empty() {
-            cur.push(' ');
+        // Chinese transcripts can contain thousands of characters without spaces.
+        // Bound these runs too, while keeping UTF-8 character boundaries intact.
+        if word_len > max_chars && word.chars().any(super::text::is_cjk) {
+            let mut count = 0;
+            for ch in word.chars() {
+                let cjk_boundary = super::text::is_cjk(ch)
+                    || cur.chars().next_back().is_some_and(super::text::is_cjk);
+                if count >= max_chars && cjk_boundary {
+                    out.push(std::mem::take(&mut cur));
+                    count = 0;
+                }
+                cur.push(ch);
+                count += 1;
+            }
+        } else {
+            if !cur.is_empty() { cur.push(' '); }
+            cur.push_str(word);
         }
-        cur.push_str(word);
     }
     if !cur.trim().is_empty() {
         out.push(cur);
@@ -661,7 +690,7 @@ fn beautify_call(
             cloud_chat(url, model, key, system, user, 0.2, max_tokens, cancel)
         }
         None => {
-            let port = port.ok_or("local engine not started")?;
+            let port = port.ok_or_else(|| crate::engine::localization::error("local engine not started"))?;
             chat_retry(port, system, user, 0.2, max_tokens, cancel, |_| {})
         }
     }
@@ -700,6 +729,7 @@ fn beautify_diarized(
     on: &mut impl FnMut(Progress),
 ) -> Result<String, String> {
     let system = match lang {
+        Lang::Zh => prompts::BEAUTIFY_TURNS_ZH,
         Lang::Ru => prompts::BEAUTIFY_TURNS,
         Lang::En => prompts::BEAUTIFY_TURNS_EN,
     };
@@ -815,6 +845,7 @@ fn beautify_plain(
     on: &mut impl FnMut(Progress),
 ) -> Result<String, String> {
     let system = match lang {
+        Lang::Zh => prompts::BEAUTIFY_PLAIN_ZH,
         Lang::Ru => prompts::BEAUTIFY_PLAIN,
         Lang::En => prompts::BEAUTIFY_PLAIN_EN,
     };
@@ -839,13 +870,14 @@ fn beautify_plain(
         }
     }
     on(Progress { stage: "reading", done: total, total, partial: String::new() });
-    Ok(out.join(" "))
+    Ok(super::text::join(out.iter().map(String::as_str)))
 }
 
 /// Короткое название записи по началу расшифровки (авто-переименование в истории).
 pub fn display_name(transcript: &str, cancel: &AtomicBool) -> Result<String, String> {
     let lang = out_lang();
     let name_prompt = match lang {
+        Lang::Zh => prompts::DISPLAY_NAME_ZH,
         Lang::Ru => prompts::DISPLAY_NAME,
         Lang::En => prompts::DISPLAY_NAME_EN,
     };
@@ -902,4 +934,19 @@ fn clean_output(s: &str) -> String {
         }
     }
     t
+}
+
+#[cfg(test)]
+mod chinese_chunk_tests {
+    use super::*;
+
+    #[test]
+    fn continuous_chinese_cleanup_is_bounded_and_lossless() {
+        let original = "这是没有空格的中文长段落。".repeat(100);
+        let chunks = split_words(&original, 80);
+        assert!(chunks.len() > 1);
+        assert!(chunks.iter().all(|chunk| chunk.chars().count() <= 80));
+        assert_eq!(super::super::text::join(chunks.iter().map(String::as_str)), original);
+        assert_eq!(split_words("Hello world from Rust", 11), vec!["Hello world", "from Rust"]);
+    }
 }

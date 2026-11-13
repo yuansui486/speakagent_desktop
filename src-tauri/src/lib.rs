@@ -178,6 +178,20 @@ fn system_info() -> SystemInfo {
 }
 
 #[tauri::command]
+async fn asr_acceleration_info() -> Result<engine::asr_runtime::AccelerationInfo, String> {
+    tauri::async_runtime::spawn_blocking(engine::asr_runtime::info)
+        .await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_asr_provider(provider: String) -> Result<(), String> {
+    if !matches!(provider.as_str(), "auto" | "cpu" | "cuda") {
+        return Err("unsupported ASR provider (expected auto|cpu|cuda)".into());
+    }
+    engine::store::set_setting("asr_provider", &provider)
+}
+
+#[tauri::command]
 fn probe_duration(path: String) -> Option<f32> {
     engine::decode::probe_duration(&path)
 }
@@ -254,7 +268,7 @@ async fn transcribe(
         let audio_sec = samples.len() as f64 / 16000.0;
 
         let files = engine::models::active_asr_files().ok_or(
-            "Recognition model is not installed. Open Settings and choose a model.",
+            crate::engine::localization::error("Recognition model is not installed. Open Settings and choose a model."),
         )?;
         let asr = engine::asr::Asr::load(&files, num_threads())?;
         // фиксированная часть (декод + загрузка модели) — калибруем отдельно от RTF
@@ -268,7 +282,7 @@ async fn transcribe(
         let segs = if diarize {
             send("diarizing", 0, 0, "");
             let (seg, emb) = engine::models::diarization().ok_or(
-                "Speaker recognition models are not installed. Download them in Settings.",
+                crate::engine::localization::error("Speaker recognition models are not installed. Download them in Settings."),
             )?;
             let n_spk = num_speakers.unwrap_or(0).max(0);
             Some(engine::diarize::diarize(
@@ -307,11 +321,7 @@ async fn transcribe(
         // Привязка слов к спикерам (диаризация) либо плоский текст.
         let out = match &segs {
             Some(segs) => engine::diarize::words_to_replicas(&words, segs),
-            None => words
-                .iter()
-                .map(|w| w.text.as_str())
-                .collect::<Vec<_>>()
-                .join(" "),
+            None => engine::asr::join_text(&words),
         };
 
         // Калибровка ETA (если не отменено): RTF — раздельно по режимам (диаризация
@@ -476,15 +486,15 @@ async fn llm_generate(
     kind: String,
     on_progress: tauri::ipc::Channel<LlmProgress>,
 ) -> Result<String, String> {
-    let rkind = engine::llm::ResultKind::parse(&kind).ok_or("unknown summary type")?;
+    let rkind = engine::llm::ResultKind::parse(&kind).ok_or(crate::engine::localization::error("unknown summary type"))?;
     let cancel = Arc::new(AtomicBool::new(false));
     let ckey = format!("llm:{job_id}");
     cancels().lock().unwrap().insert(ckey.clone(), cancel.clone());
 
     let out = tauri::async_runtime::spawn_blocking(move || {
-        let job = engine::store::get(&job_id).ok_or("recording not found in history")?;
+        let job = engine::store::get(&job_id).ok_or(crate::engine::localization::error("recording not found in history"))?;
         if job.text.trim().is_empty() {
-            return Err("recording has no text".into());
+            return Err(crate::engine::localization::error("recording has no text").into());
         }
         let transcript = engine::llm::prepare_transcript(&job.text, &job.speakers);
         let digest = engine::store::digest_for(&job_id);
@@ -571,9 +581,9 @@ async fn llm_beautify(
     cancels().lock().unwrap().insert(ckey.clone(), cancel.clone());
 
     let out = tauri::async_runtime::spawn_blocking(move || {
-        let job = engine::store::get(&job_id).ok_or("recording not found in history")?;
+        let job = engine::store::get(&job_id).ok_or(crate::engine::localization::error("recording not found in history"))?;
         if job.text.trim().is_empty() {
-            return Err("recording has no text".into());
+            return Err(crate::engine::localization::error("recording has no text").into());
         }
         // Обрабатываем СЫРОЙ текст со «SpeakerN» (не подставляем имена): «обработанный» текст
         // рендерится через ту же карту имён, что и оригинал, и остаётся переименуемым.
@@ -648,12 +658,13 @@ fn set_beautify_config(config: BeautifyConfig) -> Result<(), String> {
 /// Запасной путь для слабых машин — пользователь копирует и несёт в любой ИИ-чат.
 #[tauri::command]
 fn llm_export_prompt(job_id: String, kind: String) -> Result<String, String> {
-    let rkind = engine::llm::ResultKind::parse(&kind).ok_or("unknown summary type")?;
-    let job = engine::store::get(&job_id).ok_or("recording not found")?;
+    let rkind = engine::llm::ResultKind::parse(&kind).ok_or(crate::engine::localization::error("unknown summary type"))?;
+    let job = engine::store::get(&job_id).ok_or(crate::engine::localization::error("recording not found"))?;
     let transcript = engine::llm::prepare_transcript(&job.text, &job.speakers);
     Ok(format!(
-        "{}\n\n---\n\nРасшифровка:\n\n{}",
+        "{}\n\n---\n\n{}\n\n{}",
         engine::llm::prompt_text(rkind),
+        engine::localization::text("Расшифровка:", "Transcript:", "转写文本："),
         transcript
     ))
 }
@@ -663,14 +674,14 @@ fn llm_export_prompt(job_id: String, kind: String) -> Result<String, String> {
 #[tauri::command]
 async fn llm_display_name(job_id: String) -> Result<String, String> {
     if !engine::llm::is_warm() {
-        return Err("assistant is not running".into());
+        return Err(crate::engine::localization::error("assistant is not running").into());
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let job = engine::store::get(&job_id).ok_or("recording not found")?;
+        let job = engine::store::get(&job_id).ok_or(crate::engine::localization::error("recording not found"))?;
         let transcript = engine::llm::prepare_transcript(&job.text, &job.speakers);
         let name = engine::llm::display_name(&transcript, &AtomicBool::new(false))?;
         if name.trim().is_empty() || name.chars().count() > 80 {
-            return Err("could not generate a name".into());
+            return Err(crate::engine::localization::error("could not generate a name").into());
         }
         Ok(name)
     })
@@ -700,7 +711,7 @@ fn llm_backend() -> String {
 #[tauri::command]
 fn set_llm_backend(mode: String) -> Result<(), String> {
     if mode != "local" && mode != "cloud" {
-        return Err("unknown backend mode".into());
+        return Err(crate::engine::localization::error("unknown backend mode").into());
     }
     if mode == "cloud" {
         engine::llm::shutdown(); // локальный сервер больше не нужен
@@ -710,19 +721,21 @@ fn set_llm_backend(mode: String) -> Result<(), String> {
 
 // ─────────────── Язык приложения (UI + промпты «Итогов») ───────────────
 
-/// Язык интерфейса и вывода LLM: "ru" (по умолчанию) или "en". Единый ключ `ui_lang`
+/// Interface and LLM language: "zh" (default), "ru", or "en". Shared key: `ui_lang`
 /// читают и фронтенд (UI-строки, локаль дат), и движок (`engine::llm` выбирает промпт).
 #[tauri::command]
 fn ui_language() -> String {
-    engine::store::get_setting("ui_lang").unwrap_or_else(|| "ru".into())
+    engine::store::get_setting("ui_lang").filter(|lang| matches!(lang.as_str(), "zh" | "ru" | "en")).unwrap_or_else(|| "zh".into())
 }
 
 #[tauri::command]
-fn set_ui_language(lang: String) -> Result<(), String> {
-    if lang != "ru" && lang != "en" {
-        return Err("unsupported language (expected ru|en)".into());
+fn set_ui_language(app: AppHandle, lang: String) -> Result<(), String> {
+    if lang != "zh" && lang != "ru" && lang != "en" {
+        return Err("unsupported language (expected zh|ru|en)".into());
     }
-    engine::store::set_setting("ui_lang", &lang)
+    engine::store::set_setting("ui_lang", &lang)?;
+    refresh_tray(&app);
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -873,7 +886,7 @@ fn open_url(url: String) -> Result<(), String> {
         "vscode-insiders:",
     ];
     if !ALLOWED_SCHEMES.iter().any(|s| url.starts_with(s)) {
-        return Err("invalid address".into());
+        return Err(crate::engine::localization::error("invalid address").into());
     }
 
     // Windows: НЕ через `explorer <url>`. explorer.exe не распознаёт длинные
@@ -1357,7 +1370,7 @@ fn request_permission(kind: String) -> Result<(), String> {
                 macperms::prompt_input_monitoring();
                 open_privacy_settings("Privacy_ListenEvent");
             }
-            _ => return Err("unknown permission".into()),
+            _ => return Err(crate::engine::localization::error("unknown permission").into()),
         }
         Ok(())
     }
@@ -1510,13 +1523,22 @@ fn tray_status_item() -> &'static Mutex<Option<tauri::menu::MenuItem<tauri::Wry>
     S.get_or_init(|| Mutex::new(None))
 }
 
+fn tray_quit_item() -> &'static Mutex<Option<tauri::menu::MenuItem<tauri::Wry>>> {
+    static ITEM: OnceLock<Mutex<Option<tauri::menu::MenuItem<tauri::Wry>>>> = OnceLock::new();
+    ITEM.get_or_init(|| Mutex::new(None))
+}
+
+fn tray_quit_text() -> &'static str {
+    engine::localization::text("Выход", "Quit", "退出")
+}
+
 fn tray_status_text() -> String {
     if engine::dictation::is_recording() {
-        "● Dictation recording".into()
+        engine::localization::text("● Запись диктовки", "● Dictation recording", "● 正在录制听写").into()
     } else if mcp::is_running() {
-        format!("MCP server: on :{}", mcp::running_port().unwrap_or(0))
+        format!("{} :{}", engine::localization::text("MCP-сервер запущен", "MCP server: on", "MCP 服务器已启动"), mcp::running_port().unwrap_or(0))
     } else {
-        "Ready".into()
+        engine::localization::text("Готово", "Ready", "就绪").into()
     }
 }
 
@@ -1525,6 +1547,9 @@ fn refresh_tray(app: &AppHandle) {
     let _ = app.run_on_main_thread(|| {
         if let Some(item) = tray_status_item().lock().unwrap().as_ref() {
             let _ = item.set_text(tray_status_text());
+        }
+        if let Some(item) = tray_quit_item().lock().unwrap().as_ref() {
+            let _ = item.set_text(tray_quit_text());
         }
     });
 }
@@ -1546,7 +1571,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let status = MenuItemBuilder::with_id("status", tray_status_text())
         .enabled(false)
         .build(app)?;
-    let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+    let quit = MenuItemBuilder::with_id("quit", tray_quit_text()).build(app)?;
     let menu = MenuBuilder::new(app)
         .item(&status)
         .separator()
@@ -1554,6 +1579,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         .build()?;
 
     *tray_status_item().lock().unwrap() = Some(status);
+    *tray_quit_item().lock().unwrap() = Some(quit);
 
     let mut builder = TrayIconBuilder::with_id("main-tray")
         .tooltip("SpeakAgent")
@@ -1644,6 +1670,8 @@ pub fn run() {
             save_pdf,
             open_data_dir,
             system_info,
+            asr_acceleration_info,
+            set_asr_provider,
             probe_duration,
             resource_usage,
             transcribe,

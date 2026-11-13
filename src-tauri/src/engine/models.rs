@@ -97,6 +97,28 @@ fn make_executable(_p: &std::path::Path) {
 
 pub const CATALOG: &[Spec] = &[
     Spec {
+        id: "sensevoice", name: "SenseVoiceSmall INT8", kind: "asr", lang: "Chinese, Cantonese, English, Japanese, Korean",
+        url: "", format: Format::FileSet, check: "sensevoice/model.int8.onnx",
+        size_mb: 238, required: false,
+        files: &[
+            ("https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09/resolve/355f4d4884d8afd08aef04b9007a8556d7b463b2/model.int8.onnx", "sensevoice/model.int8.onnx"),
+            ("https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09/resolve/355f4d4884d8afd08aef04b9007a8556d7b463b2/tokens.txt", "sensevoice/tokens.txt"),
+        ],
+    },
+    Spec {
+        id: "qwen3-asr-06b", name: "Qwen3-ASR 0.6B INT8", kind: "asr", lang: "30 languages and 22 Chinese dialects",
+        url: "", format: Format::FileSet, check: "qwen3-asr-06b/decoder.int8.onnx",
+        size_mb: 987, required: false,
+        files: &[
+            ("https://huggingface.co/csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25/resolve/68818b2313fe77bd06f6a7c5068ff3ef59d02b8a/conv_frontend.onnx", "qwen3-asr-06b/conv_frontend.onnx"),
+            ("https://huggingface.co/csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25/resolve/68818b2313fe77bd06f6a7c5068ff3ef59d02b8a/encoder.int8.onnx", "qwen3-asr-06b/encoder.int8.onnx"),
+            ("https://huggingface.co/csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25/resolve/68818b2313fe77bd06f6a7c5068ff3ef59d02b8a/decoder.int8.onnx", "qwen3-asr-06b/decoder.int8.onnx"),
+            ("https://huggingface.co/csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25/resolve/68818b2313fe77bd06f6a7c5068ff3ef59d02b8a/tokenizer/merges.txt", "qwen3-asr-06b/tokenizer/merges.txt"),
+            ("https://huggingface.co/csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25/resolve/68818b2313fe77bd06f6a7c5068ff3ef59d02b8a/tokenizer/tokenizer_config.json", "qwen3-asr-06b/tokenizer/tokenizer_config.json"),
+            ("https://huggingface.co/csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25/resolve/68818b2313fe77bd06f6a7c5068ff3ef59d02b8a/tokenizer/vocab.json", "qwen3-asr-06b/tokenizer/vocab.json"),
+        ],
+    },
+    Spec {
         id: "gigaam",
         name: "Русский (GigaAM)",
         kind: "asr",
@@ -283,7 +305,10 @@ fn find(id: &str) -> Option<&'static Spec> {
 /// «Установлено» = резолвится где угодно (данные / вшитые в установщик / dev).
 /// Благодаря этому missing_core() не перекачивает то, что уже в комплекте.
 pub fn is_installed(spec: &Spec) -> bool {
-    resolve(&spec.check_path()).is_some()
+    let complete = |rel: &str| resolve(rel).and_then(|p| p.metadata().ok())
+        .is_some_and(|m| m.is_file() && m.len() > 0);
+    complete(&spec.check_path())
+        && (spec.format != Format::FileSet || spec.files.iter().all(|(_, rel)| complete(rel)))
 }
 
 #[derive(Serialize)]
@@ -315,7 +340,7 @@ pub fn list() -> Vec<ModelInfo> {
 
 /// Потоковая загрузка URL в файл с прогрессом (следует за редиректами — как GitHub/HF LFS).
 fn fetch_file(url: &str, dest: &Path, mut on: impl FnMut(u64, u64)) -> Result<(), String> {
-    let resp = ureq::get(url).call().map_err(|e| format!("network error: {e}"))?;
+    let resp = ureq::get(url).call().map_err(|e| crate::engine::localization::error(&format!("network error: {e}")))?;
     let total: u64 = resp
         .header("Content-Length")
         .and_then(|s| s.parse().ok())
@@ -333,11 +358,14 @@ fn fetch_file(url: &str, dest: &Path, mut on: impl FnMut(u64, u64)) -> Result<()
         done += n as u64;
         on(done, total);
     }
+    if done == 0 || (total > 0 && done != total) {
+        return Err(crate::engine::localization::error("incomplete model download"));
+    }
     Ok(())
 }
 
 pub fn download(id: &str, mut on_progress: impl FnMut(u64, u64)) -> Result<(), String> {
-    let spec = find(id).ok_or("unknown model")?;
+    let spec = find(id).ok_or(crate::engine::localization::error("unknown model"))?;
     let dir = models_dir();
 
     // ── мультифайловая модель (onnx + tokenizer + config): каждый файл по своему пути ──
@@ -348,13 +376,21 @@ pub fn download(id: &str, mut on_progress: impl FnMut(u64, u64)) -> Result<(), S
             if let Some(parent) = dest.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
-            // прогресс — грубо по числу файлов (этот путь используется молча в фоне)
-            on_progress(i as u64, n);
-            fetch_file(url, &dest, |_, _| {})?;
+            // A file becomes visible to model discovery only after a complete transfer.
+            // Weight progress by file count, with byte progress inside each file.
+            const SCALE: u64 = 1_000_000;
+            on_progress(i as u64 * SCALE, n * SCALE);
+            let partial = dest.with_extension("download.part");
+            fetch_file(url, &partial, |done, total| {
+                let fraction = if total > 0 { done.saturating_mul(SCALE) / total } else { 0 };
+                on_progress(i as u64 * SCALE + fraction.min(SCALE), n * SCALE);
+            })?;
+            if dest.exists() { std::fs::remove_file(&dest).map_err(|e| e.to_string())?; }
+            std::fs::rename(&partial, &dest).map_err(|e| e.to_string())?;
         }
-        on_progress(n, n);
+        on_progress(n * 1_000_000, n * 1_000_000);
         if !is_installed(spec) {
-            return Err("model file not found after download".into());
+            return Err(crate::engine::localization::error("model file not found after download").into());
         }
         return Ok(());
     }
@@ -370,7 +406,7 @@ pub fn download(id: &str, mut on_progress: impl FnMut(u64, u64)) -> Result<(), S
             let bz = bzip2::read::BzDecoder::new(f);
             tar::Archive::new(bz)
                 .unpack(&dir)
-                .map_err(|e| format!("extraction: {e}"))?;
+                .map_err(|e| crate::engine::localization::error(&format!("extraction: {e}")))?;
         }
         Format::Zip => {
             // ffmpeg: из Windows-архива берём bin/ffmpeg.exe, из macOS-архива — просто ffmpeg.
@@ -477,7 +513,7 @@ pub fn download(id: &str, mut on_progress: impl FnMut(u64, u64)) -> Result<(), S
     let _ = std::fs::remove_file(&tmp);
 
     if !is_installed(spec) {
-        return Err("model file not found after download".into());
+        return Err(crate::engine::localization::error("model file not found after download").into());
     }
     Ok(())
 }
@@ -524,14 +560,19 @@ fn resolve(rel: &str) -> Option<PathBuf> {
 
 // ── Активная ASR-модель ──
 pub fn active_id() -> String {
-    crate::engine::store::get_setting("active_asr").unwrap_or_else(|| "gigaam".to_string())
+    crate::engine::store::get_setting("active_asr").unwrap_or_else(|| {
+        match crate::engine::store::get_setting("ui_lang").as_deref() {
+            Some("ru" | "en") => "gigaam",
+            _ => "sensevoice",
+        }.to_string()
+    })
 }
 
 pub fn set_active(id: &str) -> Result<(), String> {
     if find(id).map(|s| s.kind == "asr").unwrap_or(false) {
         crate::engine::store::set_setting("active_asr", id)
     } else {
-        Err("not a language model".into())
+        Err(crate::engine::localization::error("not a language model").into())
     }
 }
 
@@ -556,9 +597,9 @@ pub fn needs_ru_punct(id: &str) -> bool {
     matches!(id, "gigaam-v2")
 }
 
-/// Файлы активной ASR-модели (fallback на gigaam, если активная не установлена).
+/// Active ASR files. Do not silently switch a missing model to Russian-only GigaAM.
 pub fn active_asr_files() -> Option<AsrFiles> {
-    asr_files(&active_id()).or_else(|| asr_files("gigaam"))
+    asr_files(&active_id())
 }
 
 // ── Модель диктовки (отдельная от общей ASR) ──
@@ -575,17 +616,37 @@ pub fn set_dict_asr(id: &str) -> Result<(), String> {
     if id.is_empty() || find(id).map(|s| s.kind == "asr").unwrap_or(false) {
         crate::engine::store::set_setting("dict_asr", id)
     } else {
-        Err("not a language model".into())
+        Err(crate::engine::localization::error("not a language model").into())
     }
 }
 
-/// Файлы модели диктовки (fallback: активная ASR → gigaam).
+/// Dictation model files (fallback: the selected active ASR model).
 pub fn dict_asr_files() -> Option<AsrFiles> {
     asr_files(&dict_asr_id()).or_else(active_asr_files)
 }
 
 fn asr_files(id: &str) -> Option<AsrFiles> {
+    if !is_installed(find(id)?) { return None; }
     match id {
+        "sensevoice" => Some(AsrFiles {
+            engine: Engine::SenseVoice,
+            model: resolve("sensevoice/model.int8.onnx")?.to_str()?.into(),
+            tokens: resolve("sensevoice/tokens.txt")?.to_str()?.into(),
+            decoder: String::new(), joiner: String::new(), language: String::new(),
+            frontend: String::new(), tokenizer: String::new(),
+        }),
+        "qwen3-asr-06b" => {
+            // Require every tokenizer asset, not just the directory or decoder.
+            if !is_installed(find(id)?) { return None; }
+            Some(AsrFiles {
+                engine: Engine::Qwen3Asr,
+                frontend: resolve("qwen3-asr-06b/conv_frontend.onnx")?.to_str()?.into(),
+                model: resolve("qwen3-asr-06b/encoder.int8.onnx")?.to_str()?.into(),
+                decoder: resolve("qwen3-asr-06b/decoder.int8.onnx")?.to_str()?.into(),
+                tokenizer: resolve("qwen3-asr-06b/tokenizer")?.to_str()?.into(),
+                tokens: String::new(), joiner: String::new(), language: String::new(),
+            })
+        }
         "gigaam" => {
             let b = "sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16";
             Some(AsrFiles {
@@ -595,6 +656,8 @@ fn asr_files(id: &str) -> Option<AsrFiles> {
                 joiner: String::new(),
                 tokens: resolve(&format!("{b}/tokens.txt"))?.to_str()?.into(),
                 language: String::new(),
+                frontend: String::new(),
+                tokenizer: String::new(),
             })
         }
         "parakeet" => {
@@ -606,6 +669,8 @@ fn asr_files(id: &str) -> Option<AsrFiles> {
                 joiner: resolve(&format!("{b}/joiner.int8.onnx"))?.to_str()?.into(),
                 tokens: resolve(&format!("{b}/tokens.txt"))?.to_str()?.into(),
                 language: String::new(),
+                frontend: String::new(),
+                tokenizer: String::new(),
             })
         }
         "whisper-small" => {
@@ -616,7 +681,9 @@ fn asr_files(id: &str) -> Option<AsrFiles> {
                 decoder: resolve(&format!("{b}/small-decoder.int8.onnx"))?.to_str()?.into(),
                 joiner: String::new(),
                 tokens: resolve(&format!("{b}/small-tokens.txt"))?.to_str()?.into(),
-                language: "ru".into(),
+                language: String::new(),
+                frontend: String::new(),
+                tokenizer: String::new(),
             })
         }
         "whisper-turbo" => {
@@ -627,7 +694,9 @@ fn asr_files(id: &str) -> Option<AsrFiles> {
                 decoder: resolve(&format!("{b}/turbo-decoder.int8.onnx"))?.to_str()?.into(),
                 joiner: String::new(),
                 tokens: resolve(&format!("{b}/turbo-tokens.txt"))?.to_str()?.into(),
-                language: "ru".into(),
+                language: String::new(),
+                frontend: String::new(),
+                tokenizer: String::new(),
             })
         }
         _ => None,
@@ -683,7 +752,7 @@ pub fn set_active_llm(id: &str) -> Result<(), String> {
     if find(id).map(|s| s.kind == "llm").unwrap_or(false) {
         crate::engine::store::set_setting("active_llm", id)
     } else {
-        Err("not a summary model".into())
+        Err(crate::engine::localization::error("not a summary model").into())
     }
 }
 

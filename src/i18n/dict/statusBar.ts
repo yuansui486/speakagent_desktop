@@ -12,4 +12,9 @@ const en: T = {
   remaining: (eta) => `remaining ${eta}`,
   switchLang: "Switch interface language",
 };
-export const statusBar = { ru, en };
+const zh: T = {
+  summarizing: "正在生成总结…", summarizingReading: (done, total) => `正在生成总结：读取 ${done}/${total}…`,
+  remaining: (eta) => `剩余 ${eta}`, switchLang: "切换界面语言",
+};
+
+export const statusBar = { ru, en, zh };

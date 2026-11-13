@@ -37,4 +37,12 @@ const en: T = {
     "Recordings never leave your computer. Your conversations stay yours.",
 };
 
-export const home = { ru, en };
+const zh: T = {
+  title: "语音转文字，就在您的电脑上", subtitle1: "将采访、会议、讲座、语音留言等各种录音转换为文字。",
+  subtitle2: "快速、准确，完全离线运行：文件无需上传。", cta: "开始转写",
+  feat1Title: "无需联网", feat1Text: "所有处理均在本机完成，无需上传，也无需按分钟订阅。",
+  feat2Title: "区分说话人", feat2Text: "识别谁在何时发言，方便整理会议和采访。",
+  feat3Title: "保护隐私", feat3Text: "录音保留在本机，让您的对话只属于您。",
+};
+
+export const home = { ru, en, zh };

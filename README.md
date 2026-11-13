@@ -1,6 +1,6 @@
 <div align="center">
 
-<a href="README.md"><b>Русский</b></a> · <a href="README.en.md">English</a>
+<a href="README.md"><b>Русский</b></a> · <a href="README.en.md">English</a> · <a href="README.zh-CN.md">简体中文</a>
 
 <img src="assets/banner.svg" alt="SpeakAgent Desktop" width="100%">
 

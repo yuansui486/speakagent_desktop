@@ -1,6 +1,7 @@
 import { ShieldCheck, Wand2, FolderOpen, Globe } from "lucide-react";
 import { openDataDir } from "../lib/api";
 import ModelSelector from "../components/ModelSelector";
+import AsrAcceleration from "../components/AsrAcceleration";
 import AiProvider from "../components/AiProvider";
 import BeautifySettings from "../components/BeautifySettings";
 import { useUi } from "../store/ui";
@@ -21,6 +22,7 @@ export default function SettingsPage() {
       </h2>
       <p className="mt-1 text-sm text-zinc-400">{t.settings.defaultModelHint}</p>
       <ModelSelector />
+      <AsrAcceleration />
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button
@@ -56,6 +58,16 @@ export default function SettingsPage() {
       <div className="mt-3 inline-flex items-center gap-2">
         <Globe size={16} className="text-zinc-500" />
         <div className="inline-flex overflow-hidden rounded-lg border border-white/10">
+          <button
+            onClick={() => setLang("zh")}
+            className={`border-r border-white/10 px-4 py-2 text-sm transition ${
+              lang === "zh"
+                ? "bg-amber-500/15 text-amber-400"
+                : "text-zinc-300 hover:bg-white/5"
+            }`}
+          >
+            简体中文
+          </button>
           <button
             onClick={() => setLang("ru")}
             className={`px-4 py-2 text-sm transition ${

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Mic, Loader2 } from "lucide-react";
-import { useT } from "../i18n";
+import { useT, syncLangFromBackend } from "../i18n";
 
 /** Плавающий индикатор записи (отдельное окно `dict-overlay`). Фон прозрачный. */
 export default function OverlayPage() {
@@ -10,6 +10,7 @@ export default function OverlayPage() {
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
+    void syncLangFromBackend();
     const un = listen<{ recording: boolean; processing: boolean }>("dictation:state", (e) => {
       setProcessing(e.payload.processing);
     });

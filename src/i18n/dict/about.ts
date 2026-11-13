@@ -95,4 +95,21 @@ const en: T = {
   madeWith: "Made with ❤️ for people who care about the privacy of their recordings.",
 };
 
-export const about = { ru, en };
+const zh: T = {
+  title: "关于", tagline: "在您的电脑上离线完成语音转写与说话人分离",
+  version: (v) => `版本 ${v}`,
+  easterEgg: "🥚 您的所有录音始终保存在这台电脑上，一个字节也未曾传出。感谢您重视隐私！",
+  updates: "更新", checking: "正在检查更新…", updateAvailable: (v) => `发现新版本 ${v}`,
+  upToDate: "当前已是最新版本", autoCheck: "自动检查更新", downloading: (pct) => `正在下载 ${pct}%`,
+  updateBtn: "更新", checkBtn: "检查更新", sourceCode: "源代码", license: "许可证",
+  hardware: "硬件", accel: "加速", gpuAccel: (gpu) => gpu ? `显卡 — ${gpu}` : "显卡", cpu: "处理器",
+  supportTitle: "支持项目", supportText: "本应用免费且支持离线使用。如果它对您有帮助，欢迎支持开发。捐助仅用于维持项目，不提供额外技术支持或优先待遇。",
+  copyAddrTitle: (label, addr) => `复制 ${label} 地址：${addr}`,
+  componentsTitle: "组件状态", asrLabel: "语音识别", asrOk: "可用", asrBad: "需要下载模型",
+  aiLabel: "AI 功能（会议总结）", aiOk: "就绪", aiBad: "未配置", accelLabel: "计算加速",
+  gpuFallback: "显卡", cpuOnly: "仅使用处理器", diagnosticsTitle: "诊断与支持",
+  diagnosticsIntro: "本机的唯一标识和诊断信息，可在咨询问题或报告故障时提供。",
+  madeWith: "为重视录音隐私的您用心打造 ❤️。",
+};
+
+export const about = { ru, en, zh };

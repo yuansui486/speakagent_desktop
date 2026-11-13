@@ -5,4 +5,8 @@ type T = typeof ru;
 const en: T = {
   drop: "Drop the file to transcribe",
 };
-export const dragDrop = { ru, en };
+const zh: T = {
+  drop: "松开文件以开始转写",
+};
+
+export const dragDrop = { ru, en, zh };

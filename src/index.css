@@ -18,7 +18,7 @@ body {
 }
 
 body {
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
   -webkit-font-smoothing: antialiased;
   color: #f4f4f5;
   overflow: hidden;
