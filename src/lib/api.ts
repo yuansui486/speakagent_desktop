@@ -14,7 +14,7 @@ export interface AppInfo {
 }
 
 export interface Progress {
-  stage: "decoding" | "diarizing" | "transcribing" | "punctuating" | "done";
+  stage: "preparing" | "decoding" | "diarizing" | "transcribing" | "punctuating" | "done";
   done: number;
   total: number;
   partial: string;
@@ -146,6 +146,9 @@ export const setActiveModel = (id: string) => invoke<void>("set_active_model", {
 export const isReady = () => invoke<boolean>("is_ready");
 /** Фоновая докачка инфраструктурных моделей (диаризация + ffmpeg) — молча. */
 export const ensureCore = () => invoke<void>("ensure_core");
+export type DiarizationEmbedding = "diar-emb" | "diar-emb-eres2netv2";
+export const diarizationEmbedding = () => invoke<DiarizationEmbedding>("diarization_embedding");
+export const setDiarizationEmbedding = (id: DiarizationEmbedding) => invoke<void>("set_diarization_embedding", { id });
 
 // ── «Итоги встречи» (локальный LLM) ──
 export type ResultKind = "summary" | "business" | "interview" | "todo";

@@ -28,6 +28,7 @@ import { exportMenu } from "./dict/exportMenu";
 import { dragDrop } from "./dict/dragDrop";
 import { perf } from "./dict/perf";
 import { acceleration } from "./dict/acceleration";
+import { diarization } from "./dict/diarization";
 
 // Словарь собирается из самодостаточных фрагментов (каждый несёт zh+ru+en и сам
 // проверяет их паритет). `ru` — источник структуры типа, `en` и `zh` обязаны ей соответствовать.
@@ -56,6 +57,7 @@ const ru = {
   dragDrop: dragDrop.ru,
   perf: perf.ru,
   acceleration: acceleration.ru,
+  diarization: diarization.ru,
 };
 
 const en = {
@@ -83,6 +85,7 @@ const en = {
   dragDrop: dragDrop.en,
   perf: perf.en,
   acceleration: acceleration.en,
+  diarization: diarization.en,
 };
 
 const zh = {
@@ -110,6 +113,7 @@ const zh = {
   dragDrop: dragDrop.zh,
   perf: perf.zh,
   acceleration: acceleration.zh,
+  diarization: diarization.zh,
 };
 
 export type Lang = UiLang; // "zh" | "ru" | "en"

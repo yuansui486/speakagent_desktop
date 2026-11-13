@@ -2,6 +2,7 @@ import { ShieldCheck, Wand2, FolderOpen, Globe } from "lucide-react";
 import { openDataDir } from "../lib/api";
 import ModelSelector from "../components/ModelSelector";
 import AsrAcceleration from "../components/AsrAcceleration";
+import DiarizationSettings from "../components/DiarizationSettings";
 import AiProvider from "../components/AiProvider";
 import BeautifySettings from "../components/BeautifySettings";
 import { useUi } from "../store/ui";
@@ -23,6 +24,7 @@ export default function SettingsPage() {
       <p className="mt-1 text-sm text-zinc-400">{t.settings.defaultModelHint}</p>
       <ModelSelector />
       <AsrAcceleration />
+      <DiarizationSettings />
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button

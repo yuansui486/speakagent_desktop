@@ -145,7 +145,10 @@ flowchart LR
 | **Qwen3-1.7B**（Q4_K_M） | 大语言模型会议记录，适合低配置电脑 | 约 1.1 GB | Apache-2.0 |
 | pyannote-segmentation-3.0 | 说话人分离中的语音分段 | 约 6 MB | MIT |
 | CAM++（3D-Speaker） | 说话人分离中的声纹嵌入 | 约 28 MB | Apache-2.0 |
+| ERes2NetV2（3D-Speaker） | 中文质量优先声纹模型，可与 CAM++ 切换 | 约 72 MB | Apache-2.0 |
 | Silero VAD | 语音活动检测 | 约 2 MB | MIT |
+
+中文界面默认使用 ERes2NetV2 声纹模型，辅助组件会在转写前检查并下载。完整选型依据、评测限制和使用方法见 [说话人分离说明](SPEAKER_DIARIZATION.md)。
 
 > ⚠️ **GigaAM** 模型采用非商业许可证。完整组件许可见 [`NOTICE.md`](NOTICE.md)。
 

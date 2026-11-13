@@ -262,15 +262,29 @@ async fn transcribe(
             });
         };
 
-        let started = std::time::Instant::now();
-        send("decoding", 0, 0, "");
-        let samples = engine::decode::decode_to_16k_mono(&path)?;
-        let audio_sec = samples.len() as f64 / 16000.0;
-
+        let embedding_id = engine::models::diarization_embedding_id();
         let files = engine::models::active_asr_files().ok_or(
             crate::engine::localization::error("Recognition model is not installed. Open Settings and choose a model."),
         )?;
+        let dependencies = if diarize { vec!["diar-seg", embedding_id, "vad"] } else { vec!["vad"] };
+        for id in dependencies {
+            if cancel.load(Ordering::Relaxed) { return Ok(String::new()); }
+            send("preparing", 0, 0, "");
+            let prepared = engine::models::ensure_cancelable(id,
+                |done, total| send("preparing", done as usize, total as usize, ""), Some(&cancel));
+            if cancel.load(Ordering::Relaxed) { return Ok(String::new()); }
+            prepared.map_err(|error| format!("{} ({id}): {error}", engine::localization::text(
+                "Не удалось подготовить модель", "Could not prepare model", "无法准备辅助模型")))?;
+        }
+        if cancel.load(Ordering::Relaxed) { return Ok(String::new()); }
+        // A one-time model download is not recurring decode/model-load overhead.
+        let started = std::time::Instant::now();
+        send("decoding", 0, 0, "");
+        let samples = engine::decode::decode_to_16k_mono(&path)?;
+        if cancel.load(Ordering::Relaxed) { return Ok(String::new()); }
+        let audio_sec = samples.len() as f64 / 16000.0;
         let asr = engine::asr::Asr::load(&files, num_threads())?;
+        if cancel.load(Ordering::Relaxed) { return Ok(String::new()); }
         // фиксированная часть (декод + загрузка модели) — калибруем отдельно от RTF
         let overhead_sec = started.elapsed().as_secs_f64();
         let processing_started = std::time::Instant::now();
@@ -281,7 +295,7 @@ async fn transcribe(
         // Диаризация (если нужна) — по всему файлу, до ASR.
         let segs = if diarize {
             send("diarizing", 0, 0, "");
-            let (seg, emb) = engine::models::diarization().ok_or(
+            let (seg, emb) = engine::models::diarization_for(embedding_id).ok_or(
                 crate::engine::localization::error("Speaker recognition models are not installed. Download them in Settings."),
             )?;
             let n_spk = num_speakers.unwrap_or(0).max(0);
@@ -296,6 +310,8 @@ async fn transcribe(
         } else {
             None
         };
+
+        if cancel.load(Ordering::Relaxed) { return Ok(String::new()); }
 
         // Один проход ASR по всему файлу со словами+таймкодами (полный контекст).
         let mut words = asr.transcribe_words(&samples, vad_ref, &cancel, |done, total, partial| {
@@ -428,6 +444,16 @@ fn set_active_model(id: String) -> Result<(), String> {
     engine::models::set_active(&id)
 }
 
+#[tauri::command]
+fn diarization_embedding() -> String {
+    engine::models::diarization_embedding_id().into()
+}
+
+#[tauri::command]
+fn set_diarization_embedding(id: String) -> Result<(), String> {
+    engine::models::set_diarization_embedding(&id)
+}
+
 /// Фоновая докачка инфраструктурных моделей (диаризация + ffmpeg) — молча.
 /// Сюда же — тихий GPU-апгрейд движка итогов (CPU-сборка → Vulkan, ~32 МБ):
 /// у уже установленных llm_ready=true, и флоу «Скачать помощника» не запустится.
@@ -435,7 +461,9 @@ fn set_active_model(id: String) -> Result<(), String> {
 async fn ensure_core() -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(|| {
         for id in engine::models::missing_core() {
-            let _ = engine::models::download(&id, |_, _| {});
+            if let Err(error) = engine::models::ensure(&id, |_, _| {}) {
+                eprintln!("Core model preparation failed ({id}): {error}");
+            }
         }
         if engine::models::llama_needs_gpu_upgrade() {
             let _ = engine::models::download("llama", |_, _| {});
@@ -1685,6 +1713,8 @@ pub fn run() {
             is_ready,
             active_model,
             set_active_model,
+            diarization_embedding,
+            set_diarization_embedding,
             ensure_core,
             llm_ready,
             ensure_llm,

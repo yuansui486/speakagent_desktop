@@ -428,6 +428,11 @@ fn transcribe_file(path: &str, diarize: bool, num_speakers: i32) -> Result<(Stri
     if !std::path::Path::new(path).exists() {
         return Err(format!("file not found: {path}"));
     }
+    let embedding_id = engine::models::diarization_embedding_id();
+    let dependencies = if diarize { vec!["diar-seg", embedding_id, "vad"] } else { vec!["vad"] };
+    for id in dependencies {
+        engine::models::ensure(id, |_, _| {})?;
+    }
     let samples = engine::decode::decode_to_16k_mono(path)?;
     let audio_sec = samples.len() as f64 / 16000.0;
     let files = engine::models::active_asr_files()
@@ -438,7 +443,7 @@ fn transcribe_file(path: &str, diarize: bool, num_speakers: i32) -> Result<(Stri
     let words = asr.transcribe_words(&samples, vad.as_deref(), &cancel, |_, _, _| {});
 
     let text = if diarize {
-        let (seg, emb) = engine::models::diarization()
+        let (seg, emb) = engine::models::diarization_for(embedding_id)
             .ok_or("Diarization models are not installed. Download them in Settings.")?;
         let segs = engine::diarize::diarize(
             &seg,

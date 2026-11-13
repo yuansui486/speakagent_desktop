@@ -1,7 +1,7 @@
 import { useT } from "../i18n";
 
 interface Props {
-  stage: "decoding" | "diarizing" | "transcribing" | "punctuating" | "done";
+  stage: "preparing" | "decoding" | "diarizing" | "transcribing" | "punctuating" | "done";
   done: number;
   total: number;
 }
@@ -9,13 +9,14 @@ interface Props {
 export default function ProgressBar({ stage, done, total }: Props) {
   const t = useT();
   const STAGE_LABEL: Record<Props["stage"], string> = {
+    preparing: t.progress.preparing,
     decoding: t.progress.decoding,
     diarizing: t.progress.diarizing,
     transcribing: t.progress.transcribing,
     punctuating: t.progress.punctuating,
     done: t.progress.done,
   };
-  const determinate = stage === "transcribing" && total > 0;
+  const determinate = (stage === "transcribing" || stage === "preparing") && total > 0;
   const pct = determinate ? Math.round((done / total) * 100) : stage === "done" ? 100 : 0;
 
   return (

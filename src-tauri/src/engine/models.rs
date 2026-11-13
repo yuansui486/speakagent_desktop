@@ -4,6 +4,9 @@
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
 
@@ -145,6 +148,18 @@ pub const CATALOG: &[Spec] = &[
         files: &[],
     },
     Spec {
+        id: "diar-emb-eres2netv2",
+        name: "ERes2NetV2 — Chinese speaker embedding",
+        kind: "diarization",
+        lang: "Chinese",
+        url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx",
+        format: Format::SingleFile,
+        check: "3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx",
+        size_mb: 72,
+        required: false,
+        files: &[],
+    },
+    Spec {
         id: "diar-emb",
         name: "Различение голосов",
         kind: "diarization",
@@ -155,7 +170,7 @@ pub const CATALOG: &[Spec] = &[
         format: Format::SingleFile,
         check: "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
         size_mb: 28,
-        required: true,
+        required: false,
         files: &[],
     },
     Spec {
@@ -339,8 +354,12 @@ pub fn list() -> Vec<ModelInfo> {
 }
 
 /// Потоковая загрузка URL в файл с прогрессом (следует за редиректами — как GitHub/HF LFS).
-fn fetch_file(url: &str, dest: &Path, mut on: impl FnMut(u64, u64)) -> Result<(), String> {
-    let resp = ureq::get(url).call().map_err(|e| crate::engine::localization::error(&format!("network error: {e}")))?;
+fn fetch_file(url: &str, dest: &Path, mut on: impl FnMut(u64, u64), cancel: Option<&AtomicBool>) -> Result<(), String> {
+    check_cancel(cancel)?;
+    let agent = ureq::AgentBuilder::new().try_proxy_from_env(true)
+        .timeout_connect(std::time::Duration::from_secs(20))
+        .timeout_read(std::time::Duration::from_secs(60)).build();
+    let resp = agent.get(url).call().map_err(|e| crate::engine::localization::error(&format!("network error: {e}")))?;
     let total: u64 = resp
         .header("Content-Length")
         .and_then(|s| s.parse().ok())
@@ -350,7 +369,9 @@ fn fetch_file(url: &str, dest: &Path, mut on: impl FnMut(u64, u64)) -> Result<()
     let mut buf = vec![0u8; 1 << 16];
     let mut done: u64 = 0;
     loop {
+        check_cancel(cancel)?;
         let n = reader.read(&mut buf).map_err(|e| e.to_string())?;
+        check_cancel(cancel)?;
         if n == 0 {
             break;
         }
@@ -364,7 +385,49 @@ fn fetch_file(url: &str, dest: &Path, mut on: impl FnMut(u64, u64)) -> Result<()
     Ok(())
 }
 
-pub fn download(id: &str, mut on_progress: impl FnMut(u64, u64)) -> Result<(), String> {
+fn download_lock(id: &str) -> Arc<Mutex<()>> {
+    static LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+    LOCKS.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap()
+        .entry(id.to_owned()).or_default().clone()
+}
+
+/// Background preparation and a transcription may request the same model.
+/// Serialize each model's downloads and recheck after waiting for the lock.
+pub fn ensure(id: &str, on_progress: impl FnMut(u64, u64)) -> Result<(), String> {
+    ensure_cancelable(id, on_progress, None)
+}
+
+fn check_cancel(cancel: Option<&AtomicBool>) -> Result<(), String> {
+    if cancel.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+        Err("cancelled".into())
+    } else { Ok(()) }
+}
+
+/// Cancellation of one waiter must not interrupt a background download that owns
+/// the same model lock. A cancelled owner leaves only its temporary download.
+pub fn ensure_cancelable(id: &str, on_progress: impl FnMut(u64, u64), cancel: Option<&AtomicBool>) -> Result<(), String> {
+    let lock = download_lock(id);
+    let _guard = loop {
+        check_cancel(cancel)?;
+        match lock.try_lock() {
+            Ok(guard) => break guard,
+            Err(std::sync::TryLockError::WouldBlock) => std::thread::sleep(std::time::Duration::from_millis(50)),
+            Err(error) => return Err(error.to_string()),
+        }
+    };
+    check_cancel(cancel)?;
+    let spec = find(id).ok_or_else(|| crate::engine::localization::error("unknown model"))?;
+    if is_installed(spec) { return Ok(()); }
+    download_unlocked(id, on_progress, cancel)
+}
+
+pub fn download(id: &str, on_progress: impl FnMut(u64, u64)) -> Result<(), String> {
+    let lock = download_lock(id);
+    let _guard = lock.lock().unwrap();
+    download_unlocked(id, on_progress, None)
+}
+
+fn download_unlocked(id: &str, mut on_progress: impl FnMut(u64, u64), cancel: Option<&AtomicBool>) -> Result<(), String> {
     let spec = find(id).ok_or(crate::engine::localization::error("unknown model"))?;
     let dir = models_dir();
 
@@ -372,6 +435,7 @@ pub fn download(id: &str, mut on_progress: impl FnMut(u64, u64)) -> Result<(), S
     if spec.format == Format::FileSet {
         let n = spec.files.len().max(1) as u64;
         for (i, (url, rel)) in spec.files.iter().enumerate() {
+            check_cancel(cancel)?;
             let dest = dir.join(rel);
             if let Some(parent) = dest.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -384,7 +448,8 @@ pub fn download(id: &str, mut on_progress: impl FnMut(u64, u64)) -> Result<(), S
             fetch_file(url, &partial, |done, total| {
                 let fraction = if total > 0 { done.saturating_mul(SCALE) / total } else { 0 };
                 on_progress(i as u64 * SCALE + fraction.min(SCALE), n * SCALE);
-            })?;
+            }, cancel)?;
+            check_cancel(cancel)?;
             if dest.exists() { std::fs::remove_file(&dest).map_err(|e| e.to_string())?; }
             std::fs::rename(&partial, &dest).map_err(|e| e.to_string())?;
         }
@@ -397,7 +462,8 @@ pub fn download(id: &str, mut on_progress: impl FnMut(u64, u64)) -> Result<(), S
 
     // ── одиночный файл/архив ──
     let tmp = dir.join(format!(".{}.part", spec.id));
-    fetch_file(&spec.url_os(), &tmp, &mut on_progress)?;
+    fetch_file(&spec.url_os(), &tmp, &mut on_progress, cancel)?;
+    check_cancel(cancel)?;
 
     // ── распаковка / размещение ──
     match spec.format_os() {
@@ -584,9 +650,10 @@ pub fn list_asr() -> Vec<ModelInfo> {
 /// Инфраструктурные модели (диаризация + инструменты), обязательные и ещё не установленные —
 /// качать в фоне. Не-required инфра (напр. fallback-пунктуация) сюда не попадает.
 pub fn missing_core() -> Vec<String> {
+    let embedding = diarization_embedding_id();
     CATALOG
         .iter()
-        .filter(|s| s.kind != "asr" && s.required && !is_installed(s))
+        .filter(|s| s.kind != "asr" && (s.required || s.id == embedding) && !is_installed(s))
         .map(|s| s.id.to_string())
         .collect()
 }
@@ -703,12 +770,38 @@ fn asr_files(id: &str) -> Option<AsrFiles> {
     }
 }
 
+pub fn diarization_embedding_id() -> &'static str {
+    match crate::engine::store::get_setting("diarization_embedding").as_deref() {
+        Some("diar-emb") => "diar-emb",
+        Some("diar-emb-eres2netv2") => "diar-emb-eres2netv2",
+        _ => match crate::engine::store::get_setting("ui_lang").as_deref() {
+            Some("ru" | "en") => "diar-emb",
+            _ => "diar-emb-eres2netv2",
+        },
+    }
+}
+
+pub fn set_diarization_embedding(id: &str) -> Result<(), String> {
+    if !matches!(id, "diar-emb" | "diar-emb-eres2netv2") {
+        return Err(crate::engine::localization::error("unknown model"));
+    }
+    crate::engine::store::set_setting("diarization_embedding", id)
+}
+
+pub fn transcription_dependencies(diarize: bool) -> Vec<&'static str> {
+    if diarize { vec!["diar-seg", diarization_embedding_id(), "vad"] } else { vec!["vad"] }
+}
+
 pub fn diarization() -> Option<(String, String)> {
+    diarization_for(diarization_embedding_id())
+}
+
+/// Resolve the selection captured for this transcription, not a later UI change.
+pub fn diarization_for(embedding_id: &str) -> Option<(String, String)> {
+    if !matches!(embedding_id, "diar-emb" | "diar-emb-eres2netv2") { return None; }
     let seg = resolve("sherpa-onnx-pyannote-segmentation-3-0/model.onnx")?;
-    // Предпочитаем новый мультиязычный эмбеддер; на старых установках (и в dev-фолбэке)
-    // ещё может лежать прежний zh-cn — используем его, пока не докачается новый.
-    let emb = resolve("3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx")
-        .or_else(|| resolve("3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"))?;
+    let spec = find(embedding_id)?;
+    let emb = resolve(spec.check)?;
     Some((seg.to_str()?.into(), emb.to_str()?.into()))
 }
 
@@ -796,4 +889,32 @@ pub fn missing_llm() -> Vec<String> {
         v.push(id);
     }
     v
+}
+
+#[cfg(test)]
+mod preparation_tests {
+    use super::*;
+
+    #[test]
+    fn cancelled_waiter_does_not_wait_for_or_interrupt_download_owner() {
+        let lock = download_lock("diar-emb-eres2netv2");
+        let owner = lock.lock().unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let waiter_cancel = cancel.clone();
+        let waiter = std::thread::spawn(move || {
+            ensure_cancelable("diar-emb-eres2netv2", |_, _| {}, Some(&waiter_cancel))
+        });
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        cancel.store(true, Ordering::Relaxed);
+        assert_eq!(waiter.join().unwrap(), Err("cancelled".into()));
+        // The original download lock is still ours, not released by the waiter.
+        assert!(matches!(lock.try_lock(), Err(std::sync::TryLockError::WouldBlock)));
+        drop(owner);
+    }
+
+    #[test]
+    fn different_models_do_not_share_a_download_lock() {
+        assert!(Arc::ptr_eq(&download_lock("vad"), &download_lock("vad")));
+        assert!(!Arc::ptr_eq(&download_lock("vad"), &download_lock("diar-seg")));
+    }
 }

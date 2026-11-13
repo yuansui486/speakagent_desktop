@@ -72,6 +72,7 @@ file is provided for attribution and to make those obligations visible.
 | [Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) / [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) | LLM «Итоги встречи» | Apache-2.0 |
 | [pyannote segmentation 3.0](https://huggingface.co/pyannote/segmentation-3.0) | Диаризация (сегментация) | MIT |
 | [CAM++ (3D-Speaker)](https://github.com/modelscope/3D-Speaker) | Диаризация (эмбеддинг голосов) | Apache-2.0 |
+| [ERes2NetV2 Chinese (3D-Speaker)](https://modelscope.cn/models/iic/speech_eres2netv2_sv_zh-cn_16k-common/summary) | Chinese speaker embeddings, quality option | Apache-2.0 |
 | [Silero VAD](https://github.com/snakers4/silero-vad) | Детектор речи | MIT |
 | [RUPunct small](https://huggingface.co/ekhodzitsky/rupunct-small-onnx) | Пунктуация (дремлющий fallback) | MIT |
 
