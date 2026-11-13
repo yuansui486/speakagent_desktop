@@ -1,42 +1,6 @@
-const ru = {
-  title: "MCP-сервер",
-  intro:
-    "Локальный сервер Model Context Protocol. Любой ИИ/код-агент (Claude Code, Cursor, VS Code) может обращаться к движку SpeakAgent — распознавать файлы, делать диаризацию, протоколы и смотреть историю. Работает офлайн, только на этом компьютере.",
 
-  running: "Сервер запущен",
-  stopped: "Сервер остановлен",
-  start: "Запустить",
 
-  connectHeading: "Подключение агента",
-  quickAdd: "Быстрое добавление в популярные клиенты:",
-  claudeCodeHint: "Claude Code — выполните в терминале:",
-  configHint: "Cursor / VS Code / Claude Desktop — добавьте в конфиг MCP:",
-  bearerToken: "Bearer <ваш токен>",
-
-  toolsHeading: "Инструменты",
-  settingsHeading: "Настройки",
-  port: "Порт",
-  token: "Токен (необязательно)",
-  tokenPlaceholder: "пусто — без авторизации (только localhost)",
-  autostart: "Запускать сервер при старте приложения",
-  saveApply: "Сохранить и применить",
-
-  // Подсказки к инструментам MCP, ключ = id инструмента.
-  tools: {
-    status: "версия, активная модель, готовность",
-    transcribe: "распознать файл → текст",
-    diarize: "распознать с разделением по говорящим",
-    protocol: "протокол/саммари встречи (LLM)",
-    todo: "список задач из записи (LLM)",
-    summarize: "итог по записи из истории",
-    list_jobs: "список записей истории",
-    get_transcript: "текст записи по id",
-  },
-};
-
-type T = typeof ru;
-
-const en: T = {
+const en = {
   title: "MCP Server",
   intro:
     "A local Model Context Protocol server. Any AI or coding agent (Claude Code, Cursor, VS Code) can reach the SpeakAgent engine — transcribe files, run diarization, build protocols, and browse history. Works offline, on this computer only.",
@@ -71,6 +35,8 @@ const en: T = {
   },
 };
 
+type T = typeof en;
+
 const zh: T = {
   title: "MCP 服务器", intro: "本地 Model Context Protocol 服务器。AI 或编程代理（如 Claude Code、Cursor、VS Code）可调用 SpeakAgent 引擎，转写文件、区分说话人、生成会议纪要并查看历史记录。支持离线运行，仅限本机访问。",
   running: "服务器运行中", stopped: "服务器已停止", start: "启动", connectHeading: "连接代理",
@@ -83,4 +49,4 @@ const zh: T = {
     summarize: "总结历史记录中的录音", list_jobs: "列出历史录音", get_transcript: "根据 ID 获取转写文本" },
 };
 
-export const mcp = { ru, en, zh };
+export const mcp = { en, zh };

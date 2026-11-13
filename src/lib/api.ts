@@ -248,7 +248,7 @@ export const testCloud = (url: string, model: string, key: string) =>
   invoke<string>("test_cloud", { url, model, key });
 
 // ── Язык приложения (UI + промпты LLM) ──
-export type UiLang = "zh" | "ru" | "en";
+export type UiLang = "zh" | "en";
 /** Текущий язык приложения из настроек (по умолчанию "zh"). */
 export const uiLanguage = () => invoke<UiLang>("ui_language");
 /** Сохранить язык приложения (влияет и на язык вывода «Итогов»). */

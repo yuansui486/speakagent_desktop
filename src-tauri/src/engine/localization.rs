@@ -1,15 +1,14 @@
 //! User-facing native messages. Technical error details remain intact.
 
-pub fn text(ru: &'static str, en: &'static str, zh: &'static str) -> &'static str {
+pub fn text(en: &'static str, zh: &'static str) -> &'static str {
     match super::store::get_setting("ui_lang").as_deref() {
-        Some("ru") => ru,
         Some("en") => en,
         _ => zh,
     }
 }
 
 pub fn error(message: &str) -> String {
-    if matches!(super::store::get_setting("ui_lang").as_deref(), Some("ru" | "en")) {
+    if matches!(super::store::get_setting("ui_lang").as_deref(), Some("en")) {
         return message.to_owned();
     }
     match message {

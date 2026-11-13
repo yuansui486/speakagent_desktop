@@ -1,4 +1,4 @@
-// Лёгкий самописный i18n-слой (ZH/RU/EN). Один источник истины — настройка `ui_lang`
+// Лёгкий самописный i18n-слой (ZH/EN). Один источник истины — настройка `ui_lang`
 // (SQLite на бэке); localStorage используется как мгновенное зеркало для первой
 // отрисовки без «мигания». Язык влияет и на UI-строки, и на локаль дат/чисел, и —
 // через ту же настройку на бэке — на язык вывода «Итогов встречи».
@@ -31,37 +31,8 @@ import { perf } from "./dict/perf";
 import { acceleration } from "./dict/acceleration";
 import { diarization } from "./dict/diarization";
 
-// Словарь собирается из самодостаточных фрагментов (каждый несёт zh+ru+en и сам
-// проверяет их паритет). `ru` — источник структуры типа, `en` и `zh` обязаны ей соответствовать.
-const ru = {
-  voiceLibrary: voiceLibrary.ru,
-  common: common.ru,
-  models: models.ru,
-  nav: nav.ru,
-  statusBar: statusBar.ru,
-  progress: progress.ru,
-  home: home.ru,
-  transcribe: transcribe.ru,
-  dictation: dictation.ru,
-  about: about.ru,
-  mcp: mcp.ru,
-  settings: settings.ru,
-  onboarding: onboarding.ru,
-  meeting: meeting.ru,
-  resultView: resultView.ru,
-  beautify: beautify.ru,
-  speakers: speakers.ru,
-  aiProvider: aiProvider.ru,
-  modelSelector: modelSelector.ru,
-  diagnostics: diagnostics.ru,
-  overlay: overlay.ru,
-  exportMenu: exportMenu.ru,
-  dragDrop: dragDrop.ru,
-  perf: perf.ru,
-  acceleration: acceleration.ru,
-  diarization: diarization.ru,
-};
-
+// Словарь собирается из самодостаточных фрагментов (каждый несёт zh+en и сам
+// проверяет их паритет). `en` defines the dictionary shape; `zh` must match it.
 const en = {
   voiceLibrary: voiceLibrary.en,
   common: common.en,
@@ -120,16 +91,17 @@ const zh = {
   diarization: diarization.zh,
 };
 
-export type Lang = UiLang; // "zh" | "ru" | "en"
-export type Dict = typeof ru;
+export type Lang = UiLang; // "zh" | "en"
+export type Dict = typeof en;
 
-const dictionaries: Record<Lang, Dict> = { zh, ru, en };
+const dictionaries: Record<Lang, Dict> = { zh, en };
 const STORAGE_KEY = "ui_lang";
 
 function detectInitial(): Lang {
   try {
     const s = localStorage.getItem(STORAGE_KEY);
-    if (s === "zh" || s === "ru" || s === "en") return s;
+    if (s === "zh" || s === "en") return s;
+    if (s === "ru") localStorage.setItem(STORAGE_KEY, "zh");
   } catch {
     /* ignore */
   }
@@ -191,7 +163,7 @@ export async function syncLangFromBackend(): Promise<void> {
     const backend = await uiLanguage();
     // A user selection made while this request was pending takes precedence.
     if (revision !== languageRevision) return;
-    if ((backend === "zh" || backend === "ru" || backend === "en") && backend !== _lang) {
+    if ((backend === "zh" || backend === "en") && backend !== _lang) {
       _lang = backend;
       updateDocumentLanguage(backend);
       try {
@@ -210,8 +182,8 @@ export async function syncLangFromBackend(): Promise<void> {
 // from other windows without writing the same preference back to the backend.
 window.addEventListener("storage", (event) => {
   if (event.key !== STORAGE_KEY) return;
-  const lang = event.newValue;
-  if (lang !== "zh" && lang !== "ru" && lang !== "en") return;
+  const lang = event.newValue === "ru" ? "zh" : event.newValue;
+  if (lang !== "zh" && lang !== "en") return;
   languageRevision += 1;
   _lang = lang;
   updateDocumentLanguage(lang);

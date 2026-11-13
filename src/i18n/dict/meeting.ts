@@ -1,58 +1,8 @@
 // «Итоги встречи»: вкладки над результатом (Текст · Саммари · Протокол · Задачи),
 // панель одного артефакта (генерация локальным LLM), докачка помощника и экспорт.
 // Общие атомы (Копировать/Скопировано!/Остановить) берём из common.
-const ru = {
-  // Вкладки над результатом.
-  tabText: "Текст",
-  tabSummary: "Саммари",
-  tabProtocol: "Протокол",
-  tabTodo: "Задачи",
 
-  // Заголовки артефактов (для имён экспортных файлов).
-  kindSummary: "Саммари",
-  kindBusiness: "Протокол",
-  kindInterview: "Протокол собеседования",
-  kindTodo: "Задачи",
-
-  // Стиль протокола.
-  styleBusiness: "Деловая встреча",
-  styleInterview: "Собеседование",
-
-  // Состояния генерации.
-  reading: (done: number, total: number) => `Читаю запись… ${done} из ${total}`,
-  writing: "Пишу…",
-  starting: "Запускаю помощника…",
-  readingHint: "Длинная запись — сначала прочитаю её по частям.",
-  writingHint:
-    "Это занимает от минуты до нескольких минут — можно уйти на другие вкладки.",
-
-  // Готовый результат.
-  regenerate: "Составить заново",
-
-  // Пустое состояние / ошибка.
-  tryAgain: "Попробовать снова",
-  compose: "Составить",
-  etaLocal: (eta: string) =>
-    `На этом компьютере — примерно ${eta}. Всё считается локально, без интернета.`,
-  minRange: (lo: number, hi: number) => `${lo}–${hi} мин`,
-
-  // Запасной путь: скопировать запрос для внешнего ИИ.
-  copyPrompt: "Скопировать запрос для ИИ",
-  copyPromptHint:
-    "Быстрая альтернатива: вставьте скопированное в ChatGPT, Claude или другой ИИ-чат — он составит итог по вашей расшифровке.",
-
-  // Первичная докачка помощника.
-  helperNeeded:
-    "Для итогов нужен помощник — он скачается один раз (~2,4 ГБ) и дальше работает полностью офлайн.",
-  downloadHelper: "Скачать помощника",
-
-  // Экспорт артефакта.
-  download: "Скачать",
-  exportTxt: "Текст (.txt)",
-};
-
-type T = typeof ru;
-const en: T = {
+const en = {
   tabText: "Text",
   tabSummary: "Summary",
   tabProtocol: "Minutes",
@@ -66,7 +16,7 @@ const en: T = {
   styleBusiness: "Business meeting",
   styleInterview: "Interview",
 
-  reading: (done, total) => `Reading the recording… ${done} of ${total}`,
+  reading: (done: number, total: number) => `Reading the recording… ${done} of ${total}`,
   writing: "Writing…",
   starting: "Starting the assistant…",
   readingHint: "It's a long recording — I'll read it in parts first.",
@@ -76,8 +26,8 @@ const en: T = {
 
   tryAgain: "Try again",
   compose: "Compose",
-  etaLocal: (eta) => `On this computer — about ${eta}. Everything runs locally, no internet.`,
-  minRange: (lo, hi) => `${lo}–${hi} min`,
+  etaLocal: (eta: string) => `On this computer — about ${eta}. Everything runs locally, no internet.`,
+  minRange: (lo: number, hi: number) => `${lo}–${hi} min`,
 
   copyPrompt: "Copy the request for an AI",
   copyPromptHint:
@@ -90,6 +40,8 @@ const en: T = {
   download: "Download",
   exportTxt: "Text (.txt)",
 };
+
+type T = typeof en;
 
 const zh: T = {
   tabText: "文本", tabSummary: "摘要", tabProtocol: "纪要", tabTodo: "任务",
@@ -104,4 +56,4 @@ const zh: T = {
   downloadHelper: "下载助手", download: "下载", exportTxt: "文本（.txt）",
 };
 
-export const meeting = { ru, en, zh };
+export const meeting = { en, zh };

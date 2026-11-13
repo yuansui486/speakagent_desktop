@@ -13,11 +13,5 @@ const en: T = {
   note: "Applies to the next transcription. Verification metrics do not measure full meeting diarization accuracy. Specify the speaker count when known.",
   installed: "Downloaded", automatic: "Downloads on first use", saveFailed: "Could not save model selection",
 };
-const ru: T = {
-  title: "Модели разделения по спикерам", hint: "Сегментация pyannote 3.0 с выбором голосовой модели. Недостающие компоненты загружаются до распознавания с отображением прогресса.",
-  quality: "ERes2NetV2 — качество китайской речи", qualityHint: "Около 72 МБ. Лучше метрики проверки китайских голосов; медленнее на CPU. По умолчанию для китайского интерфейса.",
-  fast: "CAM++ — быстрая многоязычная", fastHint: "Около 28 МБ. Для китайской, английской речи и быстрой обработки.",
-  note: "Со следующего распознавания. Проверка голосов не измеряет точность полного разделения встречи. Укажите число спикеров, если оно известно.",
-  installed: "Загружено", automatic: "Загрузится при первом использовании", saveFailed: "Не удалось сохранить выбор модели",
-};
-export const diarization = { zh, en, ru };
+
+export const diarization = { zh, en };

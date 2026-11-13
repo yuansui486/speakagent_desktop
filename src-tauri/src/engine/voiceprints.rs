@@ -60,8 +60,8 @@ fn new_id(prefix: &str) -> String {
     format!("{prefix}-{nanos:x}-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed))
 }
 
-fn err(zh: &'static str, en: &'static str, ru: &'static str) -> String {
-    super::localization::text(ru, en, zh).into()
+fn err(zh: &'static str, en: &'static str) -> String {
+    super::localization::text(en, zh).into()
 }
 
 fn connection() -> Result<Connection, String> {
@@ -111,7 +111,7 @@ pub fn list_profiles() -> Result<Vec<VoiceProfile>, String> { list_with(&connect
 fn valid_name(name: &str) -> Result<&str, String> {
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 100 || name.chars().any(char::is_control) {
-        return Err(err("请输入 1–100 个字符的姓名，不能包含控制字符。", "Enter a name of 1–100 characters without control characters.", "Введите имя из 1–100 символов без управляющих символов."));
+        return Err(err("请输入 1–100 个字符的姓名，不能包含控制字符。", "Enter a name of 1–100 characters without control characters."));
     }
     Ok(name)
 }
@@ -119,7 +119,7 @@ fn valid_name(name: &str) -> Result<&str, String> {
 pub fn rename_profile(id: &str, name: &str) -> Result<(), String> {
     let changed = connection()?.execute("UPDATE voice_profiles SET name=?1 WHERE id=?2",
         params![valid_name(name)?, id]).map_err(|e| e.to_string())?;
-    if changed == 0 { return Err(err("找不到此声纹档案。", "Voice profile not found.", "Голосовой профиль не найден.")); }
+    if changed == 0 { return Err(err("找不到此声纹档案。", "Voice profile not found.")); }
     Ok(())
 }
 
@@ -135,7 +135,7 @@ pub fn delete_sample(id: &str) -> Result<(), String> {
 
 fn validate_model(id: &str) -> Result<(), String> {
     if matches!(id, "diar-emb" | "diar-emb-eres2netv2") { Ok(()) }
-    else { Err(err("不支持的声纹模型。", "Unsupported voiceprint model.", "Неподдерживаемая голосовая модель.")) }
+    else { Err(err("不支持的声纹模型。", "Unsupported voiceprint model.")) }
 }
 
 fn cancelled(cancel: &AtomicBool) -> Result<(), String> {
@@ -181,18 +181,17 @@ fn revision(path: &str) -> Result<String, String> {
 fn extractor(model_id: &str, threads: i32) -> Result<(SpeakerEmbeddingExtractor, String), String> {
     validate_model(model_id)?;
     models::ensure(model_id, |_, _| {})?;
-    let path = models::embedding_model_file(model_id).ok_or_else(|| err(
-        "声纹模型文件不可用。", "Voiceprint model is unavailable.", "Голосовая модель недоступна."))?;
+    let path = models::embedding_model_file(model_id).ok_or_else(|| err("声纹模型文件不可用。", "Voiceprint model is unavailable."))?;
     let revision = revision(&path)?;
     let extractor = SpeakerEmbeddingExtractor::create(&SpeakerEmbeddingExtractorConfig {
         model: Some(path), num_threads: threads.clamp(1, 16), provider: Some("cpu".into()), debug: false,
-    }).ok_or_else(|| err("无法加载声纹模型。", "Could not load voiceprint model.", "Не удалось загрузить голосовую модель."))?;
+    }).ok_or_else(|| err("无法加载声纹模型。", "Could not load voiceprint model."))?;
     Ok((extractor, revision))
 }
 
 fn speech_only(samples: &[f32]) -> Result<Vec<f32>, String> {
     models::ensure("vad", |_, _| {})?;
-    let path = models::vad().ok_or_else(|| err("语音检测模型不可用。", "Speech detection model is unavailable.", "Модель обнаружения речи недоступна."))?;
+    let path = models::vad().ok_or_else(|| err("语音检测模型不可用。", "Speech detection model is unavailable."))?;
     let config = VadModelConfig {
         silero_vad: SileroVadModelConfig { model: Some(path), threshold: 0.5,
             min_silence_duration: 0.4, min_speech_duration: 0.25, max_speech_duration: 10.0,
@@ -200,8 +199,7 @@ fn speech_only(samples: &[f32]) -> Result<Vec<f32>, String> {
         sample_rate: SR as i32, num_threads: 1, provider: Some("cpu".into()), debug: false,
         ..Default::default()
     };
-    let vad = VoiceActivityDetector::create(&config, 65.0).ok_or_else(|| err(
-        "无法初始化语音检测。", "Could not initialize speech detection.", "Не удалось запустить обнаружение речи."))?;
+    let vad = VoiceActivityDetector::create(&config, 65.0).ok_or_else(|| err("无法初始化语音检测。", "Could not initialize speech detection."))?;
     let mut out = Vec::new();
     let drain = |out: &mut Vec<f32>| {
         while let Some(segment) = vad.front() { out.extend_from_slice(segment.samples()); vad.pop(); }
@@ -218,14 +216,13 @@ fn embeddings(extractor: &SpeakerEmbeddingExtractor, samples: &[f32], cancel: &A
         cancelled(cancel)?;
         // A very short tail is noisy and should not outweigh full speech windows.
         if window.len() < SR { continue; }
-        let stream = extractor.create_stream().ok_or_else(|| err(
-            "无法创建声纹提取流。", "Voice embedding stream unavailable.", "Поток извлечения голоса недоступен."))?;
+        let stream = extractor.create_stream().ok_or_else(|| err("无法创建声纹提取流。", "Voice embedding stream unavailable."))?;
         stream.accept_waveform(SR as i32, window);
         stream.input_finished();
         if !extractor.is_ready(&stream) { continue; }
         if let Some(vector) = extractor.compute(&stream).and_then(normalized) { out.push(vector); }
     }
-    if out.is_empty() { return Err(err("有效语音不足，无法提取声纹。", "Insufficient usable speech for a voiceprint.", "Недостаточно речи для голосового отпечатка.")); }
+    if out.is_empty() { return Err(err("有效语音不足，无法提取声纹。", "Insufficient usable speech for a voiceprint.")); }
     Ok(out)
 }
 
@@ -241,32 +238,30 @@ pub fn enroll_samples(name: &str, profile_id: Option<&str>, samples: &[f32], mod
     let name = valid_name(name)?;
     validate_model(model_id)?;
     if samples.len() > MAX_INPUT || samples.iter().any(|value| !value.is_finite()) {
-        return Err(err("录入音频最多 60 秒，且必须为有效的 16 kHz 单声道音频。", "Enrollment requires valid 16 kHz mono audio of at most 60 seconds.", "Нужен корректный монофонический звук 16 кГц длительностью до 60 секунд."));
+        return Err(err("录入音频最多 60 秒，且必须为有效的 16 kHz 单声道音频。", "Enrollment requires valid 16 kHz mono audio of at most 60 seconds."));
     }
     let c = connection()?;
     if let Some(id) = profile_id {
         if !c.query_row("SELECT EXISTS(SELECT 1 FROM voice_profiles WHERE id=?1)", [id], |r| r.get::<_, bool>(0)).map_err(|e| e.to_string())? {
-            return Err(err("找不到此声纹档案。", "Voice profile not found.", "Голосовой профиль не найден."));
+            return Err(err("找不到此声纹档案。", "Voice profile not found."));
         }
     }
     let speech = speech_only(samples)?;
     if speech.len() < MIN_SPEECH {
-        return Err(err("至少需要 3 秒有效单人语音，建议录入 15–30 秒。", "At least 3 seconds of single-speaker speech is required; 15–30 seconds is recommended.", "Нужно минимум 3 секунды речи одного человека; рекомендуется 15–30 секунд."));
+        return Err(err("至少需要 3 秒有效单人语音，建议录入 15–30 秒。", "At least 3 seconds of single-speaker speech is required; 15–30 seconds is recommended."));
     }
     let (extractor, revision) = extractor(model_id, num_threads)?;
     let vectors = embeddings(&extractor, &speech[..speech.len().min(MAX_SPEAKER)], &AtomicBool::new(false))?;
-    let vector = centroid(&vectors).ok_or_else(|| err(
-        "声纹向量无效。", "Invalid voice embedding.", "Недопустимый голосовой вектор."))?;
+    let vector = centroid(&vectors).ok_or_else(|| err("声纹向量无效。", "Invalid voice embedding."))?;
     // Reject clearly inconsistent windows. This is a quality guard, not a
     // guarantee that a recording contains exactly one person.
     if vectors.iter().any(|v| cosine(v, &vector).unwrap_or(-1.0) < 0.5) {
-        return Err(err("语音片段声纹不一致，请使用同一人的清晰单人录音。", "Speech windows are inconsistent; use a clear recording of one person.", "Фрагменты голоса различаются; используйте чистую запись одного человека."));
+        return Err(err("语音片段声纹不一致，请使用同一人的清晰单人录音。", "Speech windows are inconsistent; use a clear recording of one person."));
     }
     let profile = profile_id.map(str::to_owned).unwrap_or_else(|| new_id("voice"));
     insert_sample(&c, &profile, profile_id.is_none().then_some(name), model_id, &revision,
         &vector, speech.len().min(MAX_SPEAKER) as f32 / SR as f32)?;
-    list_with(&c)?.into_iter().find(|p| p.id == profile).ok_or_else(|| err(
-        "录入后找不到声纹档案。", "Voice profile not found after enrollment.", "Голосовой профиль не найден после регистрации."))
+    list_with(&c)?.into_iter().find(|p| p.id == profile).ok_or_else(|| err("录入后找不到声纹档案。", "Voice profile not found after enrollment."))
 }
 
 fn insert_sample(c: &Connection, profile: &str, new_name: Option<&str>, model_id: &str,

@@ -4,17 +4,6 @@
 // Так каталог остаётся источником самих моделей, а витрина — двуязычная.
 type ModelText = { name: string; lang: string; description?: string };
 
-const ru: Record<string, ModelText> = {
-  sensevoice: { name: "SenseVoiceSmall — быстрый китайский", lang: "Китайский, кантонский, английский, японский, корейский", description: "Для китайской речи и голосового ввода на CPU. Автоопределение языка и нормализация чисел. Временные метки китайских токенов; пунктуация может отсутствовать." },
-  "qwen3-asr-06b": { name: "Qwen3-ASR 0.6B — качество", lang: "30 языков и 22 китайских диалекта", description: "Для сложной китайской речи и диалектов. Около 987 МБ загрузки; выше нагрузка на CPU. Временные метки — по сегментам." },
-  gigaam: { name: "Русский (GigaAM)", lang: "русский" },
-  parakeet: { name: "Мультиязычный (Parakeet)", lang: "25 европейских языков (без китайского)" },
-  "whisper-small": { name: "Whisper small", lang: "98 языков" },
-  "whisper-turbo": { name: "Whisper large-v3 turbo", lang: "99 языков" },
-  "llm-qwen3-4b": { name: "Стандартная — лучшее качество", lang: "русский+" },
-  "llm-qwen3-17b": { name: "Быстрая — для слабых компьютеров", lang: "русский+" },
-};
-
 const en: Record<string, ModelText> = {
   sensevoice: { name: "SenseVoiceSmall — fast Chinese", lang: "Chinese, Cantonese, English, Japanese, Korean", description: "Recommended for Chinese speech and dictation on CPU. Automatic language detection and number normalization. Chinese token timestamps; punctuation may be absent." },
   "qwen3-asr-06b": { name: "Qwen3-ASR 0.6B — quality", lang: "30 languages and 22 Chinese dialects", description: "For difficult Chinese audio and dialects. About 987 MB to download; more CPU intensive. Segment timestamps." },
@@ -37,4 +26,4 @@ const zh: Record<string, ModelText> = {
   "llm-qwen3-17b": { name: "快速 — 适合低配置电脑", lang: "俄语等多种语言" },
 };
 
-export const models = { ru, en, zh };
+export const models = { en, zh };

@@ -14,7 +14,6 @@ export function timelineCsv(turns: TranscriptTurn[], names: Names): string {
   };
   const headers = tr().common.locale.startsWith("zh")
     ? ["姓名", "开始时间（秒）", "结束时间（秒）", "内容"]
-    : tr().common.locale.startsWith("ru") ? ["Спикер", "Начало (секунды)", "Конец (секунды)", "Текст"]
     : ["Speaker", "Start (seconds)", "End (seconds)", "Text"];
   return "\uFEFF" + [headers, ...turns.map(turn => [speakerLabel(turn.speaker, names),
     turn.startSec.toFixed(3), turn.endSec.toFixed(3), turn.text])]

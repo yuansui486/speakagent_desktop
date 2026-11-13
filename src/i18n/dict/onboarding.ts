@@ -1,25 +1,6 @@
-const ru = {
-  welcome: "Добро пожаловать в SpeakAgent",
-  sub: "Расшифровка речи прямо на вашем компьютере",
 
-  feat1: "Без интернета",
-  feat2: "Различает голоса",
-  feat3: "Ничего не уходит в сеть",
 
-  pickTitle: "Выберите язык распознавания",
-  pickHint:
-    "Модель скачается один раз (размер указан ниже) — плюс конвертер аудио (~98 МБ). Остальное уже внутри приложения. Позже можно сменить в настройках.",
-
-  downloadingModel: (pct: number) => `Скачиваю модель… ${pct}%`,
-
-  later: "Позже",
-  start: "Начать",
-  recommended: "Рекомендуем",
-};
-
-type T = typeof ru;
-
-const en: T = {
+const en = {
   welcome: "Welcome to SpeakAgent",
   sub: "Speech transcription, right on your computer",
 
@@ -31,12 +12,14 @@ const en: T = {
   pickHint:
     "The model downloads once (size shown below) — plus an audio converter (~98 MB). Everything else is already built in. You can change it later in Settings.",
 
-  downloadingModel: (pct) => `Downloading model… ${pct}%`,
+  downloadingModel: (pct: number) => `Downloading model… ${pct}%`,
 
   later: "Later",
   start: "Start",
   recommended: "Recommended",
 };
+
+type T = typeof en;
 
 const zh: T = {
   welcome: "欢迎使用 SpeakAgent", sub: "在您的电脑上完成语音转写", feat1: "无需联网", feat2: "区分说话人", feat3: "数据保留在本机",
@@ -44,4 +27,4 @@ const zh: T = {
   downloadingModel: (pct) => `正在下载模型… ${pct}%`, later: "稍后设置", start: "开始", recommended: "推荐",
 };
 
-export const onboarding = { ru, en, zh };
+export const onboarding = { en, zh };

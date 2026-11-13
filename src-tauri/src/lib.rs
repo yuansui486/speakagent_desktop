@@ -295,8 +295,7 @@ async fn transcribe(
             let prepared = engine::models::ensure_cancelable(id,
                 |done, total| send("preparing", done as usize, total as usize, ""), Some(&cancel));
             if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
-            prepared.map_err(|error| format!("{} ({id}): {error}", engine::localization::text(
-                "Не удалось подготовить модель", "Could not prepare model", "无法准备辅助模型")))?;
+            prepared.map_err(|error| format!("{} ({id}): {error}", engine::localization::text("Could not prepare model", "无法准备辅助模型")))?;
         }
         if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
         // A one-time model download is not recurring decode/model-load overhead.
@@ -794,7 +793,7 @@ fn llm_export_prompt(job_id: String, kind: String) -> Result<String, String> {
     Ok(format!(
         "{}\n\n---\n\n{}\n\n{}",
         engine::llm::prompt_text(rkind),
-        engine::localization::text("Расшифровка:", "Transcript:", "转写文本："),
+        engine::localization::text("Transcript:", "转写文本："),
         transcript
     ))
 }
@@ -851,17 +850,24 @@ fn set_llm_backend(mode: String) -> Result<(), String> {
 
 // ─────────────── Язык приложения (UI + промпты «Итогов») ───────────────
 
-/// Interface and LLM language: "zh" (default), "ru", or "en". Shared key: `ui_lang`
+/// Interface and LLM language: "zh" (default) or "en". Shared key: `ui_lang`.
 /// читают и фронтенд (UI-строки, локаль дат), и движок (`engine::llm` выбирает промпт).
 #[tauri::command]
 fn ui_language() -> String {
-    engine::store::get_setting("ui_lang").filter(|lang| matches!(lang.as_str(), "zh" | "ru" | "en")).unwrap_or_else(|| "zh".into())
+    match engine::store::get_setting("ui_lang").as_deref() {
+        Some("en") => "en".into(),
+        Some("ru") => {
+            let _ = engine::store::set_setting("ui_lang", "zh");
+            "zh".into()
+        }
+        _ => "zh".into(),
+    }
 }
 
 #[tauri::command]
 fn set_ui_language(app: AppHandle, lang: String) -> Result<(), String> {
-    if lang != "zh" && lang != "ru" && lang != "en" {
-        return Err("unsupported language (expected zh|ru|en)".into());
+    if lang != "zh" && lang != "en" {
+        return Err("unsupported language (expected zh|en)".into());
     }
     engine::store::set_setting("ui_lang", &lang)?;
     refresh_tray(&app);
@@ -1659,16 +1665,16 @@ fn tray_quit_item() -> &'static Mutex<Option<tauri::menu::MenuItem<tauri::Wry>>>
 }
 
 fn tray_quit_text() -> &'static str {
-    engine::localization::text("Выход", "Quit", "退出")
+    engine::localization::text("Quit", "退出")
 }
 
 fn tray_status_text() -> String {
     if engine::dictation::is_recording() {
-        engine::localization::text("● Запись диктовки", "● Dictation recording", "● 正在录制听写").into()
+        engine::localization::text("● Dictation recording", "● 正在录制听写").into()
     } else if mcp::is_running() {
-        format!("{} :{}", engine::localization::text("MCP-сервер запущен", "MCP server: on", "MCP 服务器已启动"), mcp::running_port().unwrap_or(0))
+        format!("{} :{}", engine::localization::text("MCP server: on", "MCP 服务器已启动"), mcp::running_port().unwrap_or(0))
     } else {
-        engine::localization::text("Готово", "Ready", "就绪").into()
+        engine::localization::text("Ready", "就绪").into()
     }
 }
 
@@ -1788,8 +1794,6 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            #[cfg(any(target_os = "windows", target_os = "macos"))]
-            apply_window_effects(app);
             setup_app(app);
             Ok(())
         })
@@ -1882,22 +1886,4 @@ pub fn run() {
                 mcp::stop();
             }
         });
-}
-
-
-/// Нативный «стеклянный» фон окна: Mica на Windows 11, vibrancy на macOS.
-#[cfg(any(target_os = "windows", target_os = "macos"))]
-fn apply_window_effects(app: &tauri::App) {
-    use tauri::Manager;
-    if let Some(win) = app.get_webview_window("main") {
-        #[cfg(target_os = "windows")]
-        let _ = window_vibrancy::apply_mica(&win, Some(true));
-        #[cfg(target_os = "macos")]
-        let _ = window_vibrancy::apply_vibrancy(
-            &win,
-            window_vibrancy::NSVisualEffectMaterial::HudWindow,
-            None,
-            None,
-        );
-    }
 }

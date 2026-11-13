@@ -13,6 +13,7 @@ const root = ReactDOM.createRoot(document.getElementById("root")!);
 // Отдельное окно оверлея записи (`dict-overlay`) грузит тот же бандл — рендерим только
 // индикатор, без роутера, онбординга и фоновых загрузок основного окна.
 if (window.location.hash.startsWith("#/overlay")) {
+  document.documentElement.dataset.overlay = "true";
   root.render(
     <React.StrictMode>
       <OverlayPage />

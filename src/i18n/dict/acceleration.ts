@@ -21,15 +21,5 @@ const en: T = {
   noGpu: "No NVIDIA GPU detected", lowMemory: "Insufficient free VRAM; CPU selected", unavailable: "CUDA runtime is unavailable or incompatible", failed: "CUDA inference failed; switched to CPU", detectionFailed: "Hardware or runtime detection failed", details: "Technical details",
   hybrid: "CUDA may still run some operators on CPU. Speed depends on the model and hardware.",
 };
-const ru: T = {
-  title: "Ускорение распознавания речи", hint: "Авто учитывает свободную видеопамять. При ошибке CUDA тот же фрагмент повторяется на CPU. Изменения действуют со следующего распознавания.",
-  auto: "Авто", cpu: "CPU", cuda: "CUDA", refresh: "Проверить снова", loading: "Проверка…",
-  gpu: "Видеокарта", memory: "Свободно / всего VRAM", driver: "Драйвер NVIDIA", driverCuda: "Предел поддержки CUDA драйвером",
-  toolkit: "CUDA Toolkit", runtime: "Локальная среда CUDA", cudnn: "cuDNN", ort: "ONNX Runtime",
-  absent: "Не установлено", unknown: "Не обнаружено", actual: "Последнее распознавание", pending: "Распознавание ещё не запускалось",
-  fallback: "Причина перехода на CPU", missing: "Отсутствующие компоненты", install: "CUDA поддерживается только на Windows x64. Если компоненты не готовы, запустите PowerShell-скрипт по инструкции CHINESE_ASR.md.",
-  distinction: "Поддержка драйвера, Toolkit и среда приложения — разные версии. Полный Toolkit не требуется.",
-  noGpu: "Видеокарта NVIDIA не обнаружена", lowMemory: "Недостаточно видеопамяти; выбран CPU", unavailable: "Среда CUDA недоступна или несовместима", failed: "Ошибка CUDA; выбран CPU", detectionFailed: "Ошибка проверки оборудования или среды", details: "Технические подробности",
-  hybrid: "Часть операций CUDA может выполняться на CPU. Скорость зависит от модели и оборудования.",
-};
-export const acceleration = { zh, en, ru };
+
+export const acceleration = { zh, en };

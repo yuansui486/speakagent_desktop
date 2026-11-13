@@ -1,69 +1,8 @@
 // Экран «Расшифровка» (хаб: управление + очередь + таблица истории) и отдельный
 // экран одной записи. Общие атомы (Отмена/Удалить/Назад/Остановить/Авто/поиск)
 // берём из common — здесь только уникальные для страницы строки.
-const ru = {
-  identifySpeakers: "Сопоставлять имена из библиотеки голосов",
-  identityWarning: "Не удалось сопоставить голоса; текст сохранён",
-  tableExport: "Таблица реплик (.csv)",
-  // Статус-пилюли в таблице.
-  statusRunning: "в работе",
-  statusError: "ошибка",
-  statusDone: "готово",
 
-  // Модалка удаления.
-  deleteTitle: "Удалить запись?",
-  deleteBody:
-    "Расшифровка и составленные по ней итоги будут удалены безвозвратно. Сам файл на диске не трогаем.",
-
-  // Модалка повторной расшифровки.
-  retranscribeTitle: "Расшифровать заново?",
-  retranscribeBody:
-    "Текущий результат для этой записи будет перезаписан, а обработка может занять время (зависит от длины записи и модели).",
-  retranscribeConfirm: "Да, заново",
-
-  // Отдельный экран записи.
-  revealInSystem: (path: string) => `Показать в системе: ${path}`,
-
-  // Заголовок + интро хаба.
-  title: "Расшифровка",
-  intro:
-    "Выберите или перетащите одну или несколько записей — они встанут в очередь. Ниже — все ваши расшифровки, они хранятся только на этом компьютере.",
-
-  // Управление.
-  pickFiles: "Выбрать записи",
-  diarizeLabel: "Определять, кто говорит",
-  speakersHint: "Если знаете точное число говорящих — так надёжнее, чем авто",
-  speakersLabel: "Говорящих:",
-
-  // Очередь.
-  inProgress: "В обработке",
-  plusInQueue: (n: number) => `+${n} в очереди`,
-  running: (elapsed: string) => `идёт ${elapsed}`,
-  analyzingVoices: " · анализирую голоса…",
-  waiting: "ожидает",
-  removeFromQueue: "Убрать из очереди",
-
-  // Слабое железо.
-  weakCpu: "слабый процессор — обработка займёт больше времени",
-  lowRam: "немного оперативной памяти — крупные модели могут тормозить",
-
-  // История.
-  historyTitle: "Мои расшифровки",
-  searchPlaceholder: "Поиск по названию и тексту…",
-  emptyState: "Здесь появятся ваши расшифровки — выберите запись выше.",
-
-  // Заголовки таблицы.
-  colName: "Название",
-  colDuration: "Длит.",
-  colStatus: "Статус",
-  colDate: "Дата",
-
-  // Тултипы.
-  copyText: "Копировать текст",
-};
-
-type T = typeof ru;
-const en: T = {
+const en = {
   identifySpeakers: "Match names from voice library",
   identityWarning: "Voice matching failed; transcript retained",
   tableExport: "Speaker timeline (.csv)",
@@ -80,7 +19,7 @@ const en: T = {
     "The current result for this recording will be overwritten, and processing may take a while (depending on the length and model).",
   retranscribeConfirm: "Yes, redo it",
 
-  revealInSystem: (path) => `Reveal in file manager: ${path}`,
+  revealInSystem: (path: string) => `Reveal in file manager: ${path}`,
 
   title: "Transcription",
   intro:
@@ -92,8 +31,8 @@ const en: T = {
   speakersLabel: "Speakers:",
 
   inProgress: "Processing",
-  plusInQueue: (n) => `+${n} in queue`,
-  running: (elapsed) => `running ${elapsed}`,
+  plusInQueue: (n: number) => `+${n} in queue`,
+  running: (elapsed: string) => `running ${elapsed}`,
   analyzingVoices: " · analyzing voices…",
   waiting: "waiting",
   removeFromQueue: "Remove from queue",
@@ -113,6 +52,8 @@ const en: T = {
   copyText: "Copy text",
 };
 
+type T = typeof en;
+
 const zh: T = {
   identifySpeakers: "匹配声纹库中的姓名",
   identityWarning: "声纹匹配未完成，转写文本已保留",
@@ -130,4 +71,4 @@ const zh: T = {
   colName: "名称", colDuration: "时长", colStatus: "状态", colDate: "日期", copyText: "复制文本",
 };
 
-export const transcribe = { ru, en, zh };
+export const transcribe = { en, zh };

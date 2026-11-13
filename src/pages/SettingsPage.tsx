@@ -71,18 +71,8 @@ export default function SettingsPage() {
             简体中文
           </button>
           <button
-            onClick={() => setLang("ru")}
-            className={`px-4 py-2 text-sm transition ${
-              lang === "ru"
-                ? "bg-amber-500/15 text-amber-400"
-                : "text-zinc-300 hover:bg-white/5"
-            }`}
-          >
-            Русский
-          </button>
-          <button
             onClick={() => setLang("en")}
-            className={`border-l border-white/10 px-4 py-2 text-sm transition ${
+            className={`px-4 py-2 text-sm transition ${
               lang === "en"
                 ? "bg-amber-500/15 text-amber-400"
                 : "text-zinc-300 hover:bg-white/5"

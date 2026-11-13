@@ -1,38 +1,11 @@
-const ru = {
-  // Экран записи
-  original: "Оригинал",
-  beautified: "Обработанный",
-  process: "Обработать текст",
-  reprocess: "Обработать заново",
-  processing: (done: number, total: number) =>
-    total > 0 ? `Обрабатываю… ${done} из ${total}` : "Обрабатываю…",
-  stop: "Стоп",
-  emptyTitle: "Обработанный текст ещё не готов",
-  emptyHint:
-    "LLM аккуратно поправит орфографию, пунктуацию и очевидные ошибки распознавания, стараясь не менять смысл и формулировки. Оригинал всегда доступен по переключателю.",
-  costNote:
-    "Локально это может занять несколько минут (можно уйти на другие вкладки); через облачный ИИ — оплатится по токенам вашего провайдера.",
-  retry: "Попробовать снова",
-  needEngine:
-    "Сначала подключите ИИ: локальную модель «Итогов» или облачный провайдер в Настройках.",
-  // Настройки
-  settingsTitle: "Обработка текста (украшатель)",
-  settingsHint:
-    "Опциональная LLM-очистка расшифровки: правит орфографию, пунктуацию и очевидные ослышки, стараясь не менять смысл. Выключено по умолчанию — на CPU это долго.",
-  enableLabel: "Включить украшатель текста",
-  enableHint: "Добавляет на экране записи переключатель «Оригинал | Обработанный».",
-  autoLabel: "Обрабатывать автоматически после расшифровки",
-  autoHint: "Осторожно: заметно удлиняет обработку каждого файла (выполняется, когда очередь пуста).",
-};
 
-type T = typeof ru;
 
-const en: T = {
+const en = {
   original: "Original",
   beautified: "Cleaned up",
   process: "Clean up text",
   reprocess: "Clean up again",
-  processing: (done, total) =>
+  processing: (done: number, total: number) =>
     total > 0 ? `Processing… ${done} of ${total}` : "Processing…",
   stop: "Stop",
   emptyTitle: "The cleaned-up text isn't ready yet",
@@ -52,6 +25,8 @@ const en: T = {
   autoHint: "Careful: noticeably lengthens each file's processing (runs when the queue is empty).",
 };
 
+type T = typeof en;
+
 const zh: T = {
   original: "原文", beautified: "整理后", process: "整理文本", reprocess: "重新整理",
   processing: (done, total) => total > 0 ? `正在处理… ${done}/${total}` : "正在处理…",
@@ -64,4 +39,4 @@ const zh: T = {
   autoLabel: "转写完成后自动整理", autoHint: "注意：这会明显延长每个文件的处理时间（在队列为空时执行）。",
 };
 
-export const beautify = { ru, en, zh };
+export const beautify = { en, zh };

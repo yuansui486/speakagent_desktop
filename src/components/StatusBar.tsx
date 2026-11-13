@@ -94,7 +94,7 @@ export default function StatusBar() {
           <span className="text-amber-400/80">{t.statusBar.remaining(fmtEta(remaining))}</span>
         )}
         <button
-          onClick={() => setLang(lang === "zh" ? "en" : lang === "en" ? "ru" : "zh")}
+          onClick={() => setLang(lang === "zh" ? "en" : "zh")}
           title={t.statusBar.switchLang}
           className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200"
         >

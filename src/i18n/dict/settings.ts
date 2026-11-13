@@ -1,28 +1,6 @@
-const ru = {
-  title: "Настройки",
 
-  defaultModel: "Модель по умолчанию",
-  defaultModelHint:
-    "Выберите язык распознавания. Не скачанную модель можно загрузить прямо здесь — нажмите на неё.",
 
-  setupWizard: "Мастер настройки",
-  dataFolder: "Папка с данными",
-
-  aiFeatures: "ИИ-функции",
-  aiFeaturesHint:
-    "Саммари, протокол и задачи по записи. Можно считать локально (полностью офлайн, помощник докачивается один раз ~32 МБ) или через ваш облачный ИИ по токену.",
-
-  interfaceLanguage: "Язык интерфейса",
-  interfaceLanguageHint: "Меняет язык приложения и язык «Итогов встречи».",
-
-  privacy: "Приватность",
-  privacyText:
-    "Все записи обрабатываются только на этом компьютере и никуда не отправляются. Интернет нужен лишь для первой загрузки моделей (и для облачного ИИ, если вы его выбрали).",
-};
-
-type T = typeof ru;
-
-const en: T = {
+const en = {
   title: "Settings",
 
   defaultModel: "Default model",
@@ -44,6 +22,8 @@ const en: T = {
     "All recordings are processed only on this computer and never sent anywhere. The internet is needed only for the first model download (and for cloud AI, if you chose it).",
 };
 
+type T = typeof en;
+
 const zh: T = {
   title: "设置", defaultModel: "默认模型", defaultModelHint: "选择识别语言。点击尚未下载的模型即可下载。",
   setupWizard: "设置向导", dataFolder: "数据文件夹", aiFeatures: "AI 功能",
@@ -52,4 +32,4 @@ const zh: T = {
   privacyText: "录音转写在本机完成，无需上传。首次下载模型需要联网；如果选择云端 AI，相关文本会发送至您配置的服务商。",
 };
 
-export const settings = { ru, en, zh };
+export const settings = { en, zh };

@@ -1,14 +1,13 @@
-const ru = {
-  download: "Скачать",
-  txt: "Текст (.txt)",
-};
-type T = typeof ru;
-const en: T = {
+
+
+const en = {
   download: "Download",
   txt: "Text (.txt)",
 };
+
+type T = typeof en;
 const zh: T = {
   download: "下载", txt: "文本（.txt）",
 };
 
-export const exportMenu = { ru, en, zh };
+export const exportMenu = { en, zh };

@@ -29,7 +29,6 @@ const IDLE_SHUTDOWN_SECS: u64 = 300; // выгрузить модель из RAM
 #[derive(Clone, Copy)]
 enum Lang {
     Zh,
-    Ru,
     En,
 }
 
@@ -37,7 +36,6 @@ enum Lang {
 fn out_lang() -> Lang {
     match crate::engine::store::get_setting("ui_lang").as_deref() {
         Some("en") => Lang::En,
-        Some("ru") => Lang::Ru,
         _ => Lang::Zh,
     }
 }
@@ -95,16 +93,12 @@ impl ResultKind {
     fn prompt(self, lang: Lang) -> &'static str {
         match (self, lang) {
             (Self::Summary, Lang::Zh) => prompts::SUMMARY_ZH,
-            (Self::Summary, Lang::Ru) => prompts::SUMMARY,
             (Self::Summary, Lang::En) => prompts::SUMMARY_EN,
             (Self::Business, Lang::Zh) => prompts::BUSINESS_ZH,
-            (Self::Business, Lang::Ru) => prompts::BUSINESS,
             (Self::Business, Lang::En) => prompts::BUSINESS_EN,
             (Self::Interview, Lang::Zh) => prompts::INTERVIEW_ZH,
-            (Self::Interview, Lang::Ru) => prompts::INTERVIEW,
             (Self::Interview, Lang::En) => prompts::INTERVIEW_EN,
             (Self::Todo, Lang::Zh) => prompts::TODO_ZH,
-            (Self::Todo, Lang::Ru) => prompts::TODO,
             (Self::Todo, Lang::En) => prompts::TODO_EN,
         }
     }
@@ -218,9 +212,9 @@ fn cloud_chat(
         Err(ureq::Error::Status(code, r)) => {
             let detail = r.into_string().unwrap_or_default();
             let hint = match code {
-                401 | 403 => crate::engine::localization::text(" — check the token", " — check the token", " — 请检查 API 密钥"),
-                402 => crate::engine::localization::text(" — insufficient funds with the provider", " — insufficient funds with the provider", " — 服务商账户余额不足"),
-                404 => crate::engine::localization::text(" — check the address or the model name", " — check the address or the model name", " — 请检查地址或模型名称"),
+                401 | 403 => crate::engine::localization::text(" — check the token", " — 请检查 API 密钥"),
+                402 => crate::engine::localization::text(" — insufficient funds with the provider", " — 服务商账户余额不足"),
+                404 => crate::engine::localization::text(" — check the address or the model name", " — 请检查地址或模型名称"),
                 _ => "",
             };
             return Err(crate::engine::localization::error(&format!("cloud provider: HTTP {code}{hint}. {}", truncate_chars(&detail, 300))));
@@ -368,15 +362,13 @@ fn spawn_error(status: std::process::ExitStatus) -> String {
     if status.code() == Some(-1073741515i32) {
         // 0xC0000135 STATUS_DLL_NOT_FOUND
         return crate::engine::localization::text(
-            "A required Windows system component is missing (Microsoft Visual C++ Redistributable). Install it from here and try again: https://aka.ms/vs/17/release/vc_redist.x64.exe",
-            "A required Windows system component is missing (Microsoft Visual C++ Redistributable). Install it from here and try again: https://aka.ms/vs/17/release/vc_redist.x64.exe",
-            "缺少必需的 Windows 系统组件（Microsoft Visual C++ 运行库）。请安装后重试：https://aka.ms/vs/17/release/vc_redist.x64.exe",
+            "A required Windows system component is missing (Microsoft Visual C++ Redistributable). Install it from here and try again: https://aka.ms/vs/17/release/vc_redist.x64.exe", "缺少必需的 Windows 系统组件（Microsoft Visual C++ 运行库）。请安装后重试：https://aka.ms/vs/17/release/vc_redist.x64.exe",
         ).into();
     }
     format!("{} ({status}). {}", crate::engine::localization::text(
-        "the summary helper failed to start", "the summary helper failed to start", "摘要服务启动失败",
+        "the summary helper failed to start", "摘要服务启动失败",
     ), crate::engine::localization::text(
-        "Details: llama-server.log in the data folder", "Details: llama-server.log in the data folder", "详细信息请查看数据文件夹中的 llama-server.log",
+        "Details: llama-server.log in the data folder", "详细信息请查看数据文件夹中的 llama-server.log",
     ))
 }
 
@@ -572,7 +564,6 @@ pub fn generate(
     // 3) map-reduce: конспектируем фрагменты → дайджест → финальный проход
     let chunk_prompt = match lang {
         Lang::Zh => prompts::SUMMARIZE_CHUNK_ZH,
-        Lang::Ru => prompts::SUMMARIZE_CHUNK,
         Lang::En => prompts::SUMMARIZE_CHUNK_EN,
     };
     let chunks = split_chunks(transcript, CHUNK_CHARS);
@@ -730,7 +721,6 @@ fn beautify_diarized(
 ) -> Result<String, String> {
     let system = match lang {
         Lang::Zh => prompts::BEAUTIFY_TURNS_ZH,
-        Lang::Ru => prompts::BEAUTIFY_TURNS,
         Lang::En => prompts::BEAUTIFY_TURNS_EN,
     };
 
@@ -846,7 +836,6 @@ fn beautify_plain(
 ) -> Result<String, String> {
     let system = match lang {
         Lang::Zh => prompts::BEAUTIFY_PLAIN_ZH,
-        Lang::Ru => prompts::BEAUTIFY_PLAIN,
         Lang::En => prompts::BEAUTIFY_PLAIN_EN,
     };
     let chunks = split_words(raw_text, BEAUTIFY_CHUNK_CHARS);
@@ -878,7 +867,6 @@ pub fn display_name(transcript: &str, cancel: &AtomicBool) -> Result<String, Str
     let lang = out_lang();
     let name_prompt = match lang {
         Lang::Zh => prompts::DISPLAY_NAME_ZH,
-        Lang::Ru => prompts::DISPLAY_NAME,
         Lang::En => prompts::DISPLAY_NAME_EN,
     };
     let port = ensure_server()?;

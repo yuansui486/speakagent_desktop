@@ -25,26 +25,11 @@ const en: T = {
   cancel: "Cancel recording", otherRecording: "Another voice enrollment is using the microphone. Finish it first.", busy: "Processing, please wait…",
   empty: "Your voice library is empty. Enter a name, then import a file or record speech.", noSamples: "No samples yet. Add a recording.", append: "Add sample",
   rename: "Rename", deletePerson: "Delete person", deleteSample: "Delete sample", confirmPerson: "Delete this person and all their voice samples?",
-  confirmSample: "Delete this voice sample?", seconds: (n) => `${n.toFixed(1)} seconds of speech`,
+  confirmSample: "Delete this voice sample?", seconds: (n: number) => `${n.toFixed(1)} seconds of speech`,
   nameRequired: "Enter a name first.", loading: "Loading…", retry: "Retry", matches: "Voice matches", similarity: "Cosine similarity",
   unknown: "Unknown", noMatches: "No voice matches yet. Only new diarization jobs perform matching.", unknownReason: "Unknown reason",
   snapshot: "This is the automatic matching snapshot from transcription. Names edited manually in the transcript take precedence.",
   reasons: { extraction_failed: "Voice feature extraction failed; speaker kept unknown", empty_library: "No usable samples in the library", model_mismatch: "No compatible samples: add a sample with the current model", short_speech: "Less than 3 seconds of speech after excluding overlap", unknown: "Cosine similarity below the matching threshold", matched: "Matched", no_profiles: "No people in the voice library", no_samples: "No usable samples", no_compatible_samples: "No samples compatible with the current model", insufficient_speech: "Not enough speech", low_score: "Similarity below threshold", ambiguous: "Several candidates sound alike", no_match: "No reliable match" },
 };
-const ru: T = {
-  title: "Библиотека голосов", intro: "Сохраните знакомые голоса, чтобы определять имена спикеров в расшифровках. При низком или неоднозначном сходстве спикер останется неизвестным.",
-  privacy: "Голосовые признаки извлекаются и хранятся локально. Аудио и признаки не отправляются в сеть. Проверяйте результаты сопоставления.",
-  sampleHint: "Рекомендуется 15–30 секунд чёткой речи одного человека без чужих голосов. Нужно не менее 3 секунд речи. Запись с микрофона ограничена 60 секундами.",
-  modelHint: "Образцы привязаны к модели. После смены модели добавьте для того же человека образец с новой моделью. Старые образцы сохранятся.",
-  currentModel: "Текущая голосовая модель", model: "Модель образца", name: "Имя", namePlaceholder: "Введите имя", target: "Сохранить для",
-  newPerson: "Новый человек", import: "Импорт аудио/видео с одним голосом", record: "Записать с микрофона", recording: "Идёт запись", stopSave: "Остановить и сохранить",
-  cancel: "Отменить запись", otherRecording: "Микрофон занят другой записью голоса. Сначала завершите её.", busy: "Обработка, подождите…",
-  empty: "Библиотека голосов пуста. Введите имя, затем импортируйте файл или запишите голос.", noSamples: "Образцов пока нет. Добавьте запись.", append: "Добавить образец",
-  rename: "Изменить имя", deletePerson: "Удалить человека", deleteSample: "Удалить образец", confirmPerson: "Удалить человека и все его голосовые образцы?",
-  confirmSample: "Удалить этот голосовой образец?", seconds: (n) => `${n.toFixed(1)} с речи`,
-  nameRequired: "Сначала введите имя.", loading: "Загрузка…", retry: "Повторить", matches: "Сопоставление голосов", similarity: "Косинусное сходство",
-  unknown: "Неизвестно", noMatches: "Результатов пока нет. Сопоставление выполняется только для новых задач диаризации.", unknownReason: "Неизвестная причина",
-  snapshot: "Это снимок автоматического сопоставления при расшифровке. Имена, изменённые вручную в тексте, имеют приоритет.",
-  reasons: { extraction_failed: "Не удалось извлечь голосовые признаки; спикер оставлен неизвестным", empty_library: "В библиотеке нет подходящих образцов", model_mismatch: "Нет совместимых образцов: добавьте запись с текущей моделью", short_speech: "После исключения наложений осталось менее 3 секунд речи", unknown: "Косинусное сходство ниже порога", matched: "Совпадение", no_profiles: "В библиотеке нет людей", no_samples: "Нет подходящих образцов", no_compatible_samples: "Нет образцов для текущей модели", insufficient_speech: "Недостаточно речи", low_score: "Сходство ниже порога", ambiguous: "Несколько похожих голосов", no_match: "Нет надёжного совпадения" },
-};
-export const voiceLibrary = { zh, en, ru };
+
+export const voiceLibrary = { zh, en };

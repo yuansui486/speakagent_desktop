@@ -1,73 +1,6 @@
-const ru = {
-  title: "Диктовка",
-  intro:
-    "Зажмите горячую клавишу, продиктуйте — текст мгновенно распознаётся локально, копируется в буфер обмена и вставляется на курсор в любом приложении.",
 
-  // Статусы.
-  recording: "Идёт запись…",
-  processing: "Распознаю…",
-  ready: "Готов к диктовке",
-  holdToRecord: "Зажмите для записи",
 
-  // Настройки.
-  settings: "Настройки",
-  hotkeyLabel: "Горячая клавиша (push-to-talk) — можно одну клавишу, напр. правый Shift",
-  capturing: "Нажмите клавишу…",
-  record: "Записать",
-  mode: "Режим",
-  modeHold: "Зажать и говорить",
-  modeToggle: "Нажать старт/стоп",
-  autopaste: "Авто-вставка на курсор",
-  sound: "Звук старт/стоп",
-  mic: "Микрофон",
-  defaultDevice: "Устройство по умолчанию",
-  asrModel: "Модель распознавания",
-  asActive: "Как активная (в «Настройках»)",
-  macHelp:
-    "На macOS дайте приложению два разрешения (System Settings → Privacy & Security) и перезапустите его: «Мониторинг ввода» (Input Monitoring) — чтобы срабатывала глобальная клавиша даже когда окно неактивно, и «Универсальный доступ» (Accessibility) — для авто-вставки. Без Accessibility текст всё равно копируется в буфер обмена — вставьте вручную (⌘V).",
-
-  // Разрешения macOS.
-  permsTitle: "Разрешения macOS",
-  permsIntro:
-    "Диктовке нужны системные разрешения. После выдачи иногда требуется перезапустить приложение.",
-  permInputTitle: "Мониторинг ввода",
-  permInputDesc: "чтобы горячая клавиша срабатывала, когда активно другое приложение",
-  permAccessTitle: "Универсальный доступ",
-  permAccessDesc: "для авто-вставки распознанного текста на курсор",
-  permGranted: "выдано",
-  permRequest: "Запросить",
-  repairHint:
-    "Разрешения слетели после обновления и переключение в Настройках не помогает? Нажмите — приложение сбросит застрявшие системные записи и запросит доступ заново. (Причина: пока приложение без платной подписи Apple, macOS считает каждое обновление «новым приложением».)",
-  repairBtn: "Восстановить разрешения",
-
-  // История.
-  historyTitle: "История диктовок",
-  searchPlaceholder: "Поиск по тексту…",
-  emptyHint: "Здесь появятся ваши быстрые распознавания.",
-  clearConfirmTitle: "Очистить историю диктовок?",
-  clearConfirmBody: "Все быстрые распознавания будут удалены безвозвратно.",
-
-  // Человекочитаемые подписи клавиш(-ш). ↑↓←→ и Enter — символьные/латинские, одинаковы в обоих языках.
-  keyLabels: {
-    ShiftLeft: "Левый Shift",
-    ShiftRight: "Правый Shift",
-    ControlLeft: "Левый Ctrl",
-    ControlRight: "Правый Ctrl",
-    Alt: "Alt (лев.)",
-    AltGr: "Alt (прав.)",
-    MetaLeft: "Левый ⌘/Win",
-    MetaRight: "Правый ⌘/Win",
-    Space: "Пробел",
-    Return: "Enter",
-    UpArrow: "↑",
-    DownArrow: "↓",
-    LeftArrow: "←",
-    RightArrow: "→",
-  },
-};
-
-type T = typeof ru;
-const en: T = {
+const en = {
   title: "Dictation",
   intro:
     "Hold the hotkey and dictate — the text is recognized locally in an instant, copied to the clipboard, and pasted at the cursor in any app.",
@@ -130,6 +63,8 @@ const en: T = {
   },
 };
 
+type T = typeof en;
+
 const zh: T = {
   title: "语音输入", intro: "按住快捷键说话，即可在本地快速识别为文字，复制到剪贴板，并粘贴到任意应用的光标位置。",
   recording: "正在录音…", processing: "正在识别…", ready: "可以开始语音输入", holdToRecord: "按住开始录音",
@@ -149,4 +84,4 @@ const zh: T = {
     Return: "Enter", UpArrow: "↑", DownArrow: "↓", LeftArrow: "←", RightArrow: "→" },
 };
 
-export const dictation = { ru, en, zh };
+export const dictation = { en, zh };

@@ -17,7 +17,7 @@ export default function Layout() {
     { to: "/about", label: t.nav.about, icon: Info, end: false },
   ];
   return (
-    <div className="flex h-screen w-screen flex-col text-zinc-100">
+    <div className="flex h-screen w-screen flex-col bg-[#11151c] text-zinc-100">
       <DragDropOverlay />
       <div className="flex min-h-0 flex-1">
         <aside className="glass flex w-56 flex-col border-r border-white/5 p-3">
@@ -51,7 +51,7 @@ export default function Layout() {
         <div className="mt-auto px-3 pb-2 text-[11px] text-zinc-600">{t.nav.worksOffline}</div>
       </aside>
 
-        <main className="flex-1 overflow-y-auto bg-zinc-950/50">
+        <main className="flex-1 overflow-y-auto bg-[#11151c]">
           <Outlet />
         </main>
       </div>

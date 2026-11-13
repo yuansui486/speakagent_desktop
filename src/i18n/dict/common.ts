@@ -1,41 +1,7 @@
 // Общие атомы, переиспользуемые многими экранами. Каждый фрагмент словаря сам
-// гарантирует паритет ru/en (en: <Dict> = typeof ru).
-const ru = {
-  // Локаль для дат/чисел (Intl).
-  locale: "ru-RU",
+// English defines the shared shape; Chinese implements the same keys.
 
-  // Кнопки/действия.
-  cancel: "Отмена",
-  delete: "Удалить",
-  copy: "Копировать",
-  copied: "Скопировано",
-  copiedBang: "Скопировано!",
-  save: "Сохранить",
-  saved: "Сохранено",
-  stop: "Остановить",
-  back: "Назад",
-  clear: "Очистить",
-
-  // Метки состояний.
-  notDownloaded: "не скачана",
-  clickToRename: "Нажмите, чтобы переименовать",
-  auto: "Авто",
-
-  // Параметрические.
-  noResultsFor: (q: string) => `Ничего не найдено по запросу «${q}».`,
-  speaker: (n: number) => `Спикер ${n}`,
-  cores: (n: number) => `${n} ядер`,
-  ramGb: (gb: number | string) => `${gb} ГБ ОЗУ`,
-  mb: (n: number) => `${n} МБ`,
-
-  // Метки фильтров системных диалогов выбора/сохранения файлов.
-  pickerAudioVideo: "Аудио и видео",
-  pickerText: "Текст",
-};
-
-export type CommonDict = typeof ru;
-
-const en: CommonDict = {
+const en = {
   locale: "en-US",
 
   cancel: "Cancel",
@@ -53,15 +19,17 @@ const en: CommonDict = {
   clickToRename: "Click to rename",
   auto: "Auto",
 
-  noResultsFor: (q) => `No results for “${q}”.`,
-  speaker: (n) => `Speaker ${n}`,
-  cores: (n) => `${n} ${n === 1 ? "core" : "cores"}`,
-  ramGb: (gb) => `${gb} GB RAM`,
-  mb: (n) => `${n} MB`,
+  noResultsFor: (q: string) => `No results for “${q}”.`,
+  speaker: (n: number) => `Speaker ${n}`,
+  cores: (n: number) => `${n} ${n === 1 ? "core" : "cores"}`,
+  ramGb: (gb: string | number) => `${gb} GB RAM`,
+  mb: (n: number) => `${n} MB`,
 
   pickerAudioVideo: "Audio & video",
   pickerText: "Text",
 };
+
+export type CommonDict = typeof en;
 
 const zh: CommonDict = {
   locale: "zh-CN",
@@ -74,4 +42,4 @@ const zh: CommonDict = {
   pickerAudioVideo: "音频和视频", pickerText: "文本",
 };
 
-export const common = { ru, en, zh };
+export const common = { en, zh };

@@ -628,7 +628,7 @@ fn resolve(rel: &str) -> Option<PathBuf> {
 pub fn active_id() -> String {
     crate::engine::store::get_setting("active_asr").unwrap_or_else(|| {
         match crate::engine::store::get_setting("ui_lang").as_deref() {
-            Some("ru" | "en") => "gigaam",
+            Some("en") => "gigaam",
             _ => "sensevoice",
         }.to_string()
     })
@@ -775,7 +775,7 @@ pub fn diarization_embedding_id() -> &'static str {
         Some("diar-emb") => "diar-emb",
         Some("diar-emb-eres2netv2") => "diar-emb-eres2netv2",
         _ => match crate::engine::store::get_setting("ui_lang").as_deref() {
-            Some("ru" | "en") => "diar-emb",
+            Some("en") => "diar-emb",
             _ => "diar-emb-eres2netv2",
         },
     }
