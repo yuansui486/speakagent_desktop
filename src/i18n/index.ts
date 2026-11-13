@@ -4,6 +4,7 @@
 // через ту же настройку на бэке — на язык вывода «Итогов встречи».
 import { create } from "zustand";
 import { setUiLanguage, uiLanguage, type UiLang } from "../lib/api";
+import { voiceLibrary } from "./dict/voiceLibrary";
 import { common } from "./dict/common";
 import { models } from "./dict/models";
 import { nav } from "./dict/nav";
@@ -33,6 +34,7 @@ import { diarization } from "./dict/diarization";
 // Словарь собирается из самодостаточных фрагментов (каждый несёт zh+ru+en и сам
 // проверяет их паритет). `ru` — источник структуры типа, `en` и `zh` обязаны ей соответствовать.
 const ru = {
+  voiceLibrary: voiceLibrary.ru,
   common: common.ru,
   models: models.ru,
   nav: nav.ru,
@@ -61,6 +63,7 @@ const ru = {
 };
 
 const en = {
+  voiceLibrary: voiceLibrary.en,
   common: common.en,
   models: models.en,
   nav: nav.en,
@@ -89,6 +92,7 @@ const en = {
 };
 
 const zh = {
+  voiceLibrary: voiceLibrary.zh,
   common: common.zh,
   models: models.zh,
   nav: nav.zh,

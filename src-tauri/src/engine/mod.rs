@@ -23,3 +23,5 @@ pub mod store;
 pub mod localization;
 
 pub mod text;
+pub mod voiceprints;
+pub mod voice_recording;

@@ -442,6 +442,8 @@ fn transcribe_file(path: &str, diarize: bool, num_speakers: i32) -> Result<(Stri
     let vad = engine::models::vad();
     let words = asr.transcribe_words(&samples, vad.as_deref(), &cancel, |_, _, _| {});
 
+    let mut turns = Vec::new();
+    let mut matches = Vec::new();
     let text = if diarize {
         let (seg, emb) = engine::models::diarization_for(embedding_id)
             .ok_or("Diarization models are not installed. Download them in Settings.")?;
@@ -453,12 +455,24 @@ fn transcribe_file(path: &str, diarize: bool, num_speakers: i32) -> Result<(Stri
             0.8,
             num_speakers.max(0),
         )?;
-        engine::diarize::words_to_replicas(&words, &segs)
+        let transcript = engine::diarize::words_to_transcript(&words, &segs);
+        match engine::voiceprints::match_speakers(&samples, &segs,
+            &transcript.raw_to_display, embedding_id, &cancel) {
+            Ok(found) => matches = found,
+            Err(error) => eprintln!("MCP voice matching failed; retaining transcript: {error}"),
+        }
+        turns = transcript.turns;
+        transcript.text
     } else {
         engine::asr::join_text(&words)
     };
 
     let id = new_id();
+    if let Err(error) = engine::voiceprints::save_job_matches(&id, &matches) {
+        eprintln!("MCP voice match snapshot failed; retaining transcript: {error}");
+    }
+    let names: std::collections::HashMap<i32, &str> = matches.iter().filter_map(|m|
+        m.name.as_deref().map(|name| (m.speaker, name))).collect();
     let name = std::path::Path::new(path)
         .file_name()
         .and_then(|n| n.to_str())
@@ -473,11 +487,14 @@ fn transcribe_file(path: &str, diarize: bool, num_speakers: i32) -> Result<(Stri
         text: text.clone(),
         error: String::new(),
         created_at: now_ms(),
-        speakers: "{}".into(),
+        speakers: serde_json::to_string(&names).map_err(|e| e.to_string())?,
         duration_sec: Some(audio_sec),
+        turns: serde_json::to_string(&turns).map_err(|e| e.to_string())?,
+        identify_speakers: true,
     };
-    let _ = engine::store::save(&job);
-    Ok((id, text, audio_sec))
+    engine::store::save(&job)?;
+    let named_text = engine::llm::prepare_transcript(&text, &job.speakers);
+    Ok((id, named_text, audio_sec))
 }
 
 /// Источник → jobId. Существующий jobId возвращаем как есть; путь к файлу — распознаём.

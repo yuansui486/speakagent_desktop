@@ -8,7 +8,7 @@ import { parseReplicas, speakerNumbers, timeToSec } from "../lib/diarize";
 import { highlightText, countMatches } from "../lib/highlight";
 import { useJobs } from "../store/jobs";
 import { useT } from "../i18n";
-import { beautifyConfig, type ResultKind } from "../lib/api";
+import { beautifyConfig, type ResultKind, type TranscriptTurn } from "../lib/api";
 
 interface Props {
   path: string;
@@ -24,6 +24,7 @@ interface Props {
   name?: string;
   /** Обработчик «Расшифровать заново» (родитель показывает подтверждение и уводит на хаб). */
   onRetranscribe?: () => void;
+  turns?: TranscriptTurn[];
 }
 
 export default function ResultView({
@@ -36,6 +37,7 @@ export default function ResultView({
   jobId,
   name,
   onRetranscribe,
+  turns,
 }: Props) {
   const t = useT();
   const [time, setTime] = useState(0);
@@ -205,6 +207,7 @@ export default function ResultView({
         ) : diarize ? (
           <DiarizeRenderer
             text={shownText}
+            turns={view === "original" ? turns : undefined}
             names={names}
             onRename={onRename}
             activeIndex={withPlayer ? activeIndex : undefined}

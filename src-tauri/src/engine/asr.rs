@@ -147,7 +147,7 @@ impl Asr {
                         out.push(Word {
                             text: t.to_string(),
                             start: offset,
-                            end: offset,
+                            end: offset + seg.len() as f32 / SR as f32,
                         });
                     }
                 }

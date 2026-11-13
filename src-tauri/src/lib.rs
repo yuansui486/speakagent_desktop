@@ -230,12 +230,27 @@ struct Progress {
     partial: String,
     /// Длительность записи, сек (известна после декода; 0 до того) — для истории.
     audio_sec: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    speaker_names: Option<std::collections::HashMap<i32, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    turns: Option<Vec<engine::diarize::TranscriptTurn>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    identity_warning: Option<String>,
 }
 
 /// Порог кластеризации диаризации (используется, когда число спикеров неизвестно).
 /// Выше → меньше спикеров. Подбирается на реальных файлах; при известном числе
 /// спикеров (num_speakers) не используется вовсе.
 const CLUSTER_THRESHOLD: f32 = 0.8;
+
+#[derive(Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TranscriptionResult {
+    text: String,
+    speaker_names: std::collections::HashMap<i32, String>,
+    turns: Vec<engine::diarize::TranscriptTurn>,
+    identity_warning: Option<String>,
+}
 
 /// Расшифровка файла: декод → (опц. диаризация) → GigaAM. Прогресс через Channel.
 /// `num_speakers`: Some(n>0) — точное число говорящих (надёжнее авто); None/0 — авто.
@@ -245,13 +260,17 @@ async fn transcribe(
     path: String,
     diarize: bool,
     num_speakers: Option<i32>,
+    identify_speakers: Option<bool>,
     job_id: String,
     on_progress: tauri::ipc::Channel<Progress>,
-) -> Result<String, String> {
+) -> Result<TranscriptionResult, String> {
     let cancel = Arc::new(AtomicBool::new(false));
     cancels().lock().unwrap().insert(job_id.clone(), cancel.clone());
+    let analysis_job_id = job_id.clone();
 
     let out = tauri::async_runtime::spawn_blocking(move || {
+        // A cancelled or failed retry must not display a previous run's identity snapshot.
+        engine::voiceprints::save_job_matches(&analysis_job_id, &[])?;
         let send = |stage: &str, done: usize, total: usize, partial: &str| {
             let _ = on_progress.send(Progress {
                 stage: stage.into(),
@@ -259,6 +278,9 @@ async fn transcribe(
                 total,
                 partial: partial.to_string(),
                 audio_sec: 0.0,
+                speaker_names: None,
+                turns: None,
+                identity_warning: None,
             });
         };
 
@@ -268,23 +290,23 @@ async fn transcribe(
         )?;
         let dependencies = if diarize { vec!["diar-seg", embedding_id, "vad"] } else { vec!["vad"] };
         for id in dependencies {
-            if cancel.load(Ordering::Relaxed) { return Ok(String::new()); }
+            if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
             send("preparing", 0, 0, "");
             let prepared = engine::models::ensure_cancelable(id,
                 |done, total| send("preparing", done as usize, total as usize, ""), Some(&cancel));
-            if cancel.load(Ordering::Relaxed) { return Ok(String::new()); }
+            if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
             prepared.map_err(|error| format!("{} ({id}): {error}", engine::localization::text(
                 "Не удалось подготовить модель", "Could not prepare model", "无法准备辅助模型")))?;
         }
-        if cancel.load(Ordering::Relaxed) { return Ok(String::new()); }
+        if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
         // A one-time model download is not recurring decode/model-load overhead.
         let started = std::time::Instant::now();
         send("decoding", 0, 0, "");
         let samples = engine::decode::decode_to_16k_mono(&path)?;
-        if cancel.load(Ordering::Relaxed) { return Ok(String::new()); }
+        if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
         let audio_sec = samples.len() as f64 / 16000.0;
         let asr = engine::asr::Asr::load(&files, num_threads())?;
-        if cancel.load(Ordering::Relaxed) { return Ok(String::new()); }
+        if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
         // фиксированная часть (декод + загрузка модели) — калибруем отдельно от RTF
         let overhead_sec = started.elapsed().as_secs_f64();
         let processing_started = std::time::Instant::now();
@@ -311,7 +333,7 @@ async fn transcribe(
             None
         };
 
-        if cancel.load(Ordering::Relaxed) { return Ok(String::new()); }
+        if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
 
         // Один проход ASR по всему файлу со словами+таймкодами (полный контекст).
         let mut words = asr.transcribe_words(&samples, vad_ref, &cancel, |done, total, partial| {
@@ -335,10 +357,34 @@ async fn transcribe(
         }
 
         // Привязка слов к спикерам (диаризация) либо плоский текст.
+        if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
+        let mut speaker_names = std::collections::HashMap::new();
+        let mut turns = Vec::new();
+        let mut identity_warning = None;
+        let mut matches = Vec::new();
         let out = match &segs {
-            Some(segs) => engine::diarize::words_to_replicas(&words, segs),
+            Some(segs) => {
+                let transcript = engine::diarize::words_to_transcript(&words, segs);
+                if identify_speakers.unwrap_or(true) {
+                    send("matching", 0, 0, &transcript.text);
+                    match engine::voiceprints::match_speakers(&samples, segs,
+                        &transcript.raw_to_display, embedding_id, &cancel) {
+                        Ok(found) => matches = found,
+                        Err(error) => identity_warning = Some(error),
+                    }
+                    for found in &matches {
+                        if let Some(name) = &found.name { speaker_names.insert(found.speaker, name.clone()); }
+                    }
+                }
+                turns = transcript.turns;
+                transcript.text
+            }
             None => engine::asr::join_text(&words),
         };
+        if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
+        if let Err(error) = engine::voiceprints::save_job_matches(&analysis_job_id, &matches) {
+            identity_warning = Some(error);
+        }
 
         // Калибровка ETA (если не отменено): RTF — раздельно по режимам (диаризация
         // заметно дороже), оверхед (декод+загрузка моделей) — своим ключом.
@@ -356,8 +402,11 @@ async fn transcribe(
             total: 1,
             partial: out.clone(),
             audio_sec: audio_sec as f32,
+            speaker_names: Some(speaker_names.clone()),
+            turns: Some(turns.clone()),
+            identity_warning: identity_warning.clone(),
         });
-        Ok::<String, String>(out)
+        Ok::<TranscriptionResult, String>(TranscriptionResult { text: out, speaker_names, turns, identity_warning })
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -399,6 +448,59 @@ fn delete_job(id: String) -> Result<(), String> {
 #[tauri::command]
 fn clear_jobs() -> Result<(), String> {
     engine::store::clear()
+}
+
+// Local voice enrollment and identity matching. Heavy inference stays off the UI thread.
+#[tauri::command]
+async fn list_voice_profiles() -> Result<Vec<engine::voiceprints::VoiceProfile>, String> {
+    tauri::async_runtime::spawn_blocking(engine::voiceprints::list_profiles).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn enroll_voice_file(name: String, profile_id: Option<String>, path: String) -> Result<engine::voiceprints::VoiceProfile, String> {
+    let model = engine::models::diarization_embedding_id();
+    tauri::async_runtime::spawn_blocking(move ||
+        engine::voiceprints::enroll_file(&name, profile_id.as_deref(), &path, model, num_threads()))
+        .await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn rename_voice_profile(id: String, name: String) -> Result<(), String> {
+    engine::voiceprints::rename_profile(&id, &name)
+}
+
+#[tauri::command]
+fn delete_voice_profile(id: String) -> Result<(), String> { engine::voiceprints::delete_profile(&id) }
+
+#[tauri::command]
+fn delete_voice_sample(id: String) -> Result<(), String> { engine::voiceprints::delete_sample(&id) }
+
+#[tauri::command]
+async fn start_voice_recording() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(engine::voice_recording::start).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn finish_voice_recording(name: String, profile_id: Option<String>) -> Result<engine::voiceprints::VoiceProfile, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (samples, model) = engine::voice_recording::finish()?;
+        engine::voiceprints::enroll_samples(&name, profile_id.as_deref(), &samples, model, num_threads())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn cancel_voice_recording() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(engine::voice_recording::cancel).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn voice_recording() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(engine::voice_recording::is_recording).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn job_voice_matches(job_id: String) -> Result<Vec<engine::voiceprints::VoiceMatch>, String> {
+    engine::voiceprints::job_matches(&job_id)
 }
 
 // ─────────────── Модели ───────────────
@@ -1705,6 +1807,16 @@ pub fn run() {
             transcribe,
             cancel_transcribe,
             list_jobs,
+            list_voice_profiles,
+            enroll_voice_file,
+            rename_voice_profile,
+            delete_voice_profile,
+            delete_voice_sample,
+            start_voice_recording,
+            finish_voice_recording,
+            cancel_voice_recording,
+            voice_recording,
+            job_voice_matches,
             save_job,
             delete_job,
             clear_jobs,

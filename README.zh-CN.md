@@ -150,6 +150,8 @@ flowchart LR
 
 中文界面默认使用 ERes2NetV2 声纹模型，辅助组件会在转写前检查并下载。完整选型依据、评测限制和使用方法见 [说话人分离说明](SPEAKER_DIARIZATION.md)。
 
+录入姓名与单人声音样本、跨录音匹配及未知说话人处理见 [本地声纹库与姓名匹配](VOICE_IDENTIFICATION.md)。
+
 > ⚠️ **GigaAM** 模型采用非商业许可证。完整组件许可见 [`NOTICE.md`](NOTICE.md)。
 
 ## 📊 性能

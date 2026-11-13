@@ -798,11 +798,13 @@ pub fn diarization() -> Option<(String, String)> {
 
 /// Resolve the selection captured for this transcription, not a later UI change.
 pub fn diarization_for(embedding_id: &str) -> Option<(String, String)> {
-    if !matches!(embedding_id, "diar-emb" | "diar-emb-eres2netv2") { return None; }
     let seg = resolve("sherpa-onnx-pyannote-segmentation-3-0/model.onnx")?;
-    let spec = find(embedding_id)?;
-    let emb = resolve(spec.check)?;
-    Some((seg.to_str()?.into(), emb.to_str()?.into()))
+    Some((seg.to_str()?.into(), embedding_model_file(embedding_id)?))
+}
+
+pub fn embedding_model_file(id: &str) -> Option<String> {
+    if !matches!(id, "diar-emb" | "diar-emb-eres2netv2") { return None; }
+    resolve(find(id)?.check)?.to_str().map(str::to_owned)
 }
 
 /// Путь к модели VAD (Silero) — для нарезки ASR по речи. None → слепые окна.

@@ -8,6 +8,7 @@ import TranscribePage from "./pages/TranscribePage";
 import DictationPage from "./pages/DictationPage";
 import McpServerPage from "./pages/McpServerPage";
 import SettingsPage from "./pages/SettingsPage";
+import VoiceLibraryPage from "./pages/VoiceLibraryPage";
 import AboutPage from "./pages/AboutPage";
 import { isReady } from "./lib/api";
 import { useUi } from "./store/ui";
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/history" element={<Navigate to="/transcribe" replace />} />
           <Route path="/dictation" element={<DictationPage />} />
           <Route path="/mcp" element={<McpServerPage />} />
+          <Route path="/voice-library" element={<VoiceLibraryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -29,6 +29,21 @@ pub struct Segment {
     pub speaker: i32,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptTurn {
+    pub speaker: i32,
+    pub start_sec: f32,
+    pub end_sec: f32,
+    pub text: String,
+}
+
+pub struct Transcript {
+    pub text: String,
+    pub turns: Vec<TranscriptTurn>,
+    pub raw_to_display: std::collections::HashMap<i32, i32>,
+}
+
 /// Возвращает речевые сегменты с метками спикеров (0-based), отсортированные по времени.
 /// `num_speakers = 0` → автоопределение по порогу.
 pub fn diarize(
@@ -90,8 +105,12 @@ struct Turn {
 /// Привязка слов к спикерам + пост-обработка → продуктовый формат
 /// `SpeakerN [H:MM:SS]: текст` (по строке на реплику).
 pub fn words_to_replicas(words: &[Word], segs: &[Segment]) -> String {
+    words_to_transcript(words, segs).text
+}
+
+pub fn words_to_transcript(words: &[Word], segs: &[Segment]) -> Transcript {
     if words.is_empty() {
-        return String::new();
+        return render(&[]);
     }
 
     // 1) collar + сортировка сегментов диаризации
@@ -112,7 +131,7 @@ pub fn words_to_replicas(words: &[Word], segs: &[Segment]) -> String {
     //    группируем подряд идущие слова одного спикера в реплики
     let mut turns: Vec<Turn> = Vec::new();
     for w in words {
-        let spk = if force_single { 0 } else { assign_speaker(w, &d) };
+        let spk = force_single.unwrap_or_else(|| assign_speaker(w, &d));
         match turns.last_mut() {
             Some(last) if last.speaker == spk => {
                 super::text::append(&mut last.text, &w.text);
@@ -135,7 +154,7 @@ pub fn words_to_replicas(words: &[Word], segs: &[Segment]) -> String {
     render(&merged)
 }
 
-fn force_single(d: &[Segment]) -> bool {
+fn force_single(d: &[Segment]) -> Option<i32> {
     let mut total = 0f32;
     let mut by: std::collections::HashMap<i32, f32> = std::collections::HashMap::new();
     for s in d {
@@ -143,8 +162,9 @@ fn force_single(d: &[Segment]) -> bool {
         total += dur;
         *by.entry(s.speaker).or_insert(0.0) += dur;
     }
-    let leader = by.values().cloned().fold(0.0f32, f32::max);
-    total > 0.0 && leader / total >= SINGLE_RATIO
+    let (&speaker, &duration) = by.iter().max_by(|(ak, av), (bk, bv)|
+        av.total_cmp(bv).then_with(|| bk.cmp(ak)))?;
+    (total > 0.0 && duration / total >= SINGLE_RATIO).then_some(speaker)
 }
 
 /// Спикер слова: максимальное перекрытие [w.start, w.end] с сегментом; иначе ближайший.
@@ -229,10 +249,11 @@ fn merge_adjacent(turns: Vec<Turn>) -> Vec<Turn> {
     out
 }
 
-fn render(turns: &[Turn]) -> String {
+fn render(turns: &[Turn]) -> Transcript {
     let mut map: std::collections::HashMap<i32, usize> = std::collections::HashMap::new();
     let mut next = 0usize;
     let mut lines: Vec<String> = Vec::new();
+    let mut structured = Vec::new();
     for t in turns {
         let text = t.text.trim();
         if text.is_empty() {
@@ -244,6 +265,41 @@ fn render(turns: &[Turn]) -> String {
             v
         });
         lines.push(format!("Speaker{} [{}]: {}", idx + 1, fmt_ts(t.start), text));
+        structured.push(TranscriptTurn {
+            speaker: idx as i32 + 1,
+            start_sec: t.start,
+            end_sec: t.end.max(t.start),
+            text: text.into(),
+        });
     }
-    lines.join("\n")
+    Transcript { text: lines.join("\n"), turns: structured,
+        raw_to_display: map.into_iter().map(|(raw, display)| (raw, display as i32 + 1)).collect() }
+}
+
+#[cfg(test)]
+mod identity_mapping_tests {
+    use super::*;
+
+    #[test]
+    fn rendering_uses_first_appearance_instead_of_raw_cluster_id() {
+        let transcript = render(&[
+            Turn { speaker: 7, start: 1.25, end: 3.75, text: "甲".into() },
+            Turn { speaker: 2, start: 4.0, end: 8.0, text: "乙".into() },
+            Turn { speaker: 7, start: 9.0, end: 11.0, text: "丙".into() },
+        ]);
+        assert_eq!(transcript.raw_to_display.get(&7), Some(&1));
+        assert_eq!(transcript.raw_to_display.get(&2), Some(&2));
+        assert_eq!(transcript.turns[0].start_sec, 1.25);
+        assert_eq!(transcript.turns[0].end_sec, 3.75);
+        assert_eq!(transcript.turns[2].speaker, 1);
+    }
+
+    #[test]
+    fn dominant_speaker_keeps_original_identity() {
+        let segments = [Segment { start: 0.0, end: 10.0, speaker: 7 }];
+        let words = [Word { text: "你好".into(), start: 1.0, end: 2.0 }];
+        let transcript = words_to_transcript(&words, &segments);
+        assert_eq!(transcript.raw_to_display.get(&7), Some(&1));
+        assert!(!transcript.raw_to_display.contains_key(&0));
+    }
 }

@@ -14,11 +14,28 @@ export interface AppInfo {
 }
 
 export interface Progress {
-  stage: "preparing" | "decoding" | "diarizing" | "transcribing" | "punctuating" | "done";
+  stage: "preparing" | "decoding" | "diarizing" | "transcribing" | "punctuating" | "matching" | "done";
   done: number;
   total: number;
   partial: string;
   audioSec: number; // длительность записи, сек (>0 на финальном сообщении)
+  speakerNames?: Record<number, string>;
+  turns?: TranscriptTurn[];
+  identityWarning?: string;
+}
+
+export interface TranscriptTurn {
+  speaker: number;
+  startSec: number;
+  endSec: number;
+  text: string;
+}
+
+export interface TranscriptionResult {
+  text: string;
+  speakerNames: Record<number, string>;
+  turns: TranscriptTurn[];
+  identityWarning: string | null;
 }
 
 export const appInfo = () => invoke<AppInfo>("app_info");
@@ -90,13 +107,15 @@ export const transcribe = (
   jobId: string,
   onProgress: Channel<Progress>,
   numSpeakers?: number, // >0 — точное число говорящих; иначе авто
+  identifySpeakers = true,
 ) =>
-  invoke<string>("transcribe", {
+  invoke<TranscriptionResult>("transcribe", {
     path,
     diarize,
     numSpeakers: numSpeakers && numSpeakers > 0 ? numSpeakers : null,
     jobId,
     onProgress,
+    identifySpeakers,
   });
 
 export const cancelTranscribe = (jobId: string) =>
@@ -114,6 +133,8 @@ export interface StoredJob {
   createdAt: number;
   speakers: string; // JSON {номер: имя}
   durationSec?: number | null; // длительность записи, сек
+  turns?: string;
+  identifySpeakers?: boolean;
 }
 
 export const listJobs = () => invoke<StoredJob[]>("list_jobs");

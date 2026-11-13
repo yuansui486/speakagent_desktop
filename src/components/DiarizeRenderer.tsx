@@ -3,6 +3,7 @@ import { ArrowRightLeft } from "lucide-react";
 import { parseReplicas, speakerLabel, timeToSec } from "../lib/diarize";
 import { highlightText } from "../lib/highlight";
 import { useT } from "../i18n";
+import type { TranscriptTurn } from "../lib/api";
 
 interface Props {
   text: string;
@@ -13,6 +14,13 @@ interface Props {
   query?: string; // подсветка совпадений при поиске по тексту
   speakers?: number[]; // список спикеров (для переназначения реплики)
   onReassign?: (index: number, speaker: number) => void; // переназначить реплику
+  turns?: TranscriptTurn[];
+}
+
+function timestamp(seconds: number): string {
+  const millis = Math.round(Math.max(0, seconds) * 1000);
+  const whole = Math.floor(millis / 1000);
+  return `${Math.floor(whole / 3600)}:${String(Math.floor(whole / 60) % 60).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}.${String(millis % 1000).padStart(3, "0")}`;
 }
 
 const COLOR = [
@@ -41,6 +49,7 @@ export default function DiarizeRenderer({
   query,
   speakers,
   onReassign,
+  turns,
 }: Props) {
   const t = useT();
   const replicas = parseReplicas(text);
@@ -65,6 +74,7 @@ export default function DiarizeRenderer({
     <div className="flex flex-col gap-3">
       {replicas.map((r, i) => {
         const c = (r.speaker - 1) % COLOR.length;
+        const turn = turns?.length === replicas.length && turns[i].text === r.text && turns[i].speaker === r.speaker ? turns[i] : undefined;
         return (
           <div key={i} className="flex flex-col gap-1">
             <div className="flex items-center gap-2 text-xs">
@@ -96,7 +106,7 @@ export default function DiarizeRenderer({
                   {speakerLabel(r.speaker, names)}
                 </span>
               )}
-              <span className="text-zinc-600">{r.time}</span>
+              <span className="text-zinc-600">{turn ? `${timestamp(turn.startSec)} – ${timestamp(turn.endSec)}` : r.time}</span>
               {onReassign && speakers && speakers.length > 1 && (
                 <div className="relative">
                   <button
@@ -129,7 +139,7 @@ export default function DiarizeRenderer({
               )}
             </div>
             <div
-              onClick={onSeek ? () => onSeek(timeToSec(r.time)) : undefined}
+              onClick={onSeek ? () => onSeek(turn?.startSec ?? timeToSec(r.time)) : undefined}
               className={`select-text rounded-lg ${BG[c]} px-3 py-2 text-sm leading-relaxed text-zinc-200 ${
                 onSeek ? "cursor-pointer" : ""
               } ${i === activeIndex ? "ring-2 ring-amber-400/70" : ""}`}

@@ -24,6 +24,8 @@ import { useUi } from "../store/ui";
 import ProgressBar from "../components/ProgressBar";
 import ResultView from "../components/ResultView";
 import ExportMenu from "../components/ExportMenu";
+import VoiceMatches from "../components/VoiceMatches";
+import { Link } from "react-router-dom";
 import { useT, tr } from "../i18n";
 
 function fmtElapsed(sec: number): string {
@@ -95,6 +97,7 @@ export default function TranscribePage() {
   }, [refresh]);
 
   const [diarize, setDiarize] = useState(true);
+  const [identifySpeakers, setIdentifySpeakers] = useState(true);
   const [speakers, setSpeakers] = useState(0); // 0 — авто
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -185,6 +188,7 @@ export default function TranscribePage() {
           diarize,
           durationSec: duration ?? undefined,
           numSpeakers: diarize ? speakers : undefined,
+          identifySpeakers: diarize && identifySpeakers,
         });
       }
       enqueue(items);
@@ -266,7 +270,7 @@ export default function TranscribePage() {
             </button>
           </div>
           {selected.status === "done" && text && (
-            <ExportMenu name={selected.name} text={text} names={selected.names} />
+            <ExportMenu name={selected.name} text={text} names={selected.names} turns={selected.turns} />
           )}
           <button
             onClick={() => setConfirmDelete(selected.id)}
@@ -276,6 +280,8 @@ export default function TranscribePage() {
           </button>
         </div>
         <div className="min-h-0 flex-1">
+          {selected.status === "done" && selected.diarize && selected.identifySpeakers && <VoiceMatches jobId={selected.id} />}
+          {selected.identityWarning && <p role="alert" className="p-3 text-xs text-amber-400">{t.transcribe.identityWarning}: {selected.identityWarning}</p>}
           {selected.status === "error" ? (
             <div className="p-6 text-sm text-red-400">{selected.error}</div>
           ) : (
@@ -284,6 +290,7 @@ export default function TranscribePage() {
               text={text}
               diarize={selected.diarize}
               names={selected.names}
+              turns={selected.turns}
               onRename={(spk, n) => rename(selected.id, spk, n)}
               withPlayer={selected.status === "done"}
               jobId={selected.status === "done" ? selected.id : undefined}
@@ -354,6 +361,11 @@ export default function TranscribePage() {
           />
           <Users size={15} className="text-zinc-500" /> {t.transcribe.diarizeLabel}
         </label>
+        {diarize && <label className="inline-flex items-center gap-2 text-sm text-zinc-300">
+          <input type="checkbox" checked={identifySpeakers} onChange={e => setIdentifySpeakers(e.target.checked)} className="h-4 w-4 accent-amber-500" />
+          {t.transcribe.identifySpeakers}
+        </label>}
+        {diarize && <Link to="/voice-library" className="text-xs text-amber-400 hover:underline">{t.voiceLibrary.title}</Link>}
         {diarize && (
           <label
             className="inline-flex items-center gap-2 text-sm text-zinc-400"

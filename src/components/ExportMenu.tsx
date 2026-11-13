@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { Download } from "lucide-react";
-import { exportTxt, exportMd, exportPdf } from "../lib/exporters";
+import { exportTxt, exportMd, exportPdf, exportTimelineCsv } from "../lib/exporters";
+import type { TranscriptTurn } from "../lib/api";
 import { useT } from "../i18n";
 
 interface Props {
   name: string;
   text: string;
   names?: Record<number, string>;
+  turns?: TranscriptTurn[];
 }
 
-export default function ExportMenu({ name, text, names }: Props) {
+export default function ExportMenu({ name, text, names, turns }: Props) {
   const t = useT();
   const [open, setOpen] = useState(false);
 
@@ -40,6 +42,7 @@ export default function ExportMenu({ name, text, names }: Props) {
             {item(t.exportMenu.txt, () => exportTxt(name, text, names))}
             {item("Markdown (.md)", () => exportMd(name, text, names))}
             {item("PDF", () => exportPdf(name, text, names))}
+            {!!turns?.length && item(t.transcribe.tableExport, () => exportTimelineCsv(name, turns, names))}
           </div>
         </>
       )}

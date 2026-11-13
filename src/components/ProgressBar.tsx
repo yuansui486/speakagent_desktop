@@ -1,7 +1,7 @@
 import { useT } from "../i18n";
 
 interface Props {
-  stage: "preparing" | "decoding" | "diarizing" | "transcribing" | "punctuating" | "done";
+  stage: "preparing" | "decoding" | "diarizing" | "transcribing" | "punctuating" | "matching" | "done";
   done: number;
   total: number;
 }
@@ -14,6 +14,7 @@ export default function ProgressBar({ stage, done, total }: Props) {
     diarizing: t.progress.diarizing,
     transcribing: t.progress.transcribing,
     punctuating: t.progress.punctuating,
+    matching: t.progress.matching,
     done: t.progress.done,
   };
   const determinate = (stage === "transcribing" || stage === "preparing") && total > 0;

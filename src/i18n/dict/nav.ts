@@ -1,4 +1,5 @@
 const ru = {
+  voiceLibrary: "Библиотека голосов",
   home: "Главная",
   transcribe: "Расшифровка",
   dictation: "Диктовка",
@@ -11,6 +12,7 @@ const ru = {
 };
 type T = typeof ru;
 const en: T = {
+  voiceLibrary: "Voice library",
   home: "Home",
   transcribe: "Transcription",
   dictation: "Dictation",
@@ -22,6 +24,7 @@ const en: T = {
   worksOffline: "Works offline",
 };
 const zh: T = {
+  voiceLibrary: "声纹库",
   home: "首页", transcribe: "语音转写", dictation: "语音输入", mcp: "MCP 服务器", settings: "设置", about: "关于",
   brandSubtitle: "语音转文字", worksOffline: "离线运行",
 };

@@ -22,6 +22,7 @@ import {
   type StoredJob,
   type LlmProgress,
   type ResultKind,
+  type TranscriptTurn,
 } from "../lib/api";
 
 export type JobStatus = "running" | "done" | "error";
@@ -50,6 +51,9 @@ export interface Job {
   text?: string;
   error?: string;
   names: Record<number, string>; // переименования спикеров
+  turns: TranscriptTurn[];
+  identifySpeakers: boolean;
+  identityWarning?: string;
   durationSec?: number; // длительность записи (для оценки времени)
   startedAt: number;
   /** Когда началась текущая стадия — для честного «осталось» по скорости прогресса. */
@@ -63,6 +67,7 @@ export interface QueueItem {
   diarize: boolean;
   durationSec?: number;
   numSpeakers?: number;
+  identifySpeakers?: boolean;
 }
 
 interface JobsState {
@@ -124,11 +129,15 @@ function toStored(j: Job): StoredJob {
     createdAt: j.startedAt,
     speakers: JSON.stringify(j.names ?? {}),
     durationSec: j.durationSec ?? null,
+    turns: JSON.stringify(j.turns),
+    identifySpeakers: j.identifySpeakers,
   };
 }
 
 function storedToJob(s: StoredJob): Job {
   let names: Record<number, string> = {};
+  let turns: TranscriptTurn[] = [];
+  try { const parsed = JSON.parse(s.turns || "[]"); if (Array.isArray(parsed)) turns = parsed; } catch { /* older recording */ }
   try {
     names = JSON.parse(s.speakers || "{}");
   } catch {
@@ -147,6 +156,8 @@ function storedToJob(s: StoredJob): Job {
     text: s.status === "done" ? s.text : undefined,
     error: s.status === "error" ? s.error : undefined,
     names,
+    turns,
+    identifySpeakers: s.identifySpeakers ?? true,
     durationSec: s.durationSec ?? undefined,
     startedAt: s.createdAt,
     stageStartedAt: s.createdAt,
@@ -214,6 +225,8 @@ export const useJobs = create<JobsState>((set, get) => ({
       total: 0,
       partial: "",
       names: {},
+      turns: [],
+      identifySpeakers: item.identifySpeakers ?? true,
       durationSec: item.durationSec,
       startedAt: createdAt,
       stageStartedAt: createdAt,
@@ -236,9 +249,9 @@ export const useJobs = create<JobsState>((set, get) => ({
       });
     };
 
-    transcribe(item.path, item.diarize, id, channel, item.numSpeakers)
-      .then((text) => {
-        patch({ status: "done", text, partial: text, stage: "done" });
+    transcribe(item.path, item.diarize, id, channel, item.numSpeakers, item.identifySpeakers)
+      .then(({ text, speakerNames, turns, identityWarning }) => {
+        patch({ status: "done", text, partial: text, stage: "done", names: speakerNames, turns, identityWarning: identityWarning ?? undefined });
         const j = get().jobs.find((x) => x.id === id);
         if (j) saveJob(toStored({ ...j, status: "done", text })).catch(() => {});
         // авто-украшатель: только если включён и очередь пуста (не задерживаем другие файлы)
@@ -295,6 +308,9 @@ export const useJobs = create<JobsState>((set, get) => ({
       partial: "",
       text: undefined,
       error: undefined,
+      names: {},
+      turns: [],
+      identityWarning: undefined,
       startedAt,
       stageStartedAt: startedAt,
     });
@@ -312,9 +328,9 @@ export const useJobs = create<JobsState>((set, get) => ({
       });
     };
 
-    transcribe(job.path, job.diarize, id, channel)
-      .then((text) => {
-        patch({ status: "done", text, partial: text, stage: "done" });
+    transcribe(job.path, job.diarize, id, channel, undefined, job.identifySpeakers)
+      .then(({ text, speakerNames, turns, identityWarning }) => {
+        patch({ status: "done", text, partial: text, stage: "done", names: speakerNames, turns, identityWarning: identityWarning ?? undefined });
         const j = get().jobs.find((x) => x.id === id);
         if (j) saveJob(toStored({ ...j, status: "done", text })).catch(() => {});
       })
@@ -497,7 +513,7 @@ export const useJobs = create<JobsState>((set, get) => ({
         if (j.id !== id) return j;
         const names = { ...j.names };
         delete names[from]; // имя слитого спикера больше не нужно
-        return { ...j, text, partial: text, names };
+        return { ...j, text, partial: text, names, turns: j.turns.map(turn => turn.speaker === from ? { ...turn, speaker: into } : turn) };
       });
       const results = { ...s.results };
       delete results[id];
@@ -516,7 +532,8 @@ export const useJobs = create<JobsState>((set, get) => ({
     const text = rewriteSpeakers(job.text, (sp, i) => (i === replicaIndex ? toSpeaker : sp));
     if (text === job.text) return;
     set((s) => {
-      const jobs = s.jobs.map((j) => (j.id === id ? { ...j, text, partial: text } : j));
+      const jobs = s.jobs.map((j) => (j.id === id ? { ...j, text, partial: text,
+        turns: j.turns.map((turn, i) => i === replicaIndex ? { ...turn, speaker: toSpeaker } : turn) } : j));
       const results = { ...s.results };
       delete results[id];
       const beautified = { ...s.beautified };

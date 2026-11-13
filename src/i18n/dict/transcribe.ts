@@ -2,6 +2,9 @@
 // экран одной записи. Общие атомы (Отмена/Удалить/Назад/Остановить/Авто/поиск)
 // берём из common — здесь только уникальные для страницы строки.
 const ru = {
+  identifySpeakers: "Сопоставлять имена из библиотеки голосов",
+  identityWarning: "Не удалось сопоставить голоса; текст сохранён",
+  tableExport: "Таблица реплик (.csv)",
   // Статус-пилюли в таблице.
   statusRunning: "в работе",
   statusError: "ошибка",
@@ -61,6 +64,9 @@ const ru = {
 
 type T = typeof ru;
 const en: T = {
+  identifySpeakers: "Match names from voice library",
+  identityWarning: "Voice matching failed; transcript retained",
+  tableExport: "Speaker timeline (.csv)",
   statusRunning: "running",
   statusError: "error",
   statusDone: "done",
@@ -108,6 +114,9 @@ const en: T = {
 };
 
 const zh: T = {
+  identifySpeakers: "匹配声纹库中的姓名",
+  identityWarning: "声纹匹配未完成，转写文本已保留",
+  tableExport: "姓名与起止时间表（.csv）",
   statusRunning: "处理中", statusError: "出错", statusDone: "完成", deleteTitle: "删除录音记录？",
   deleteBody: "转写文本及其生成的总结将被永久删除，磁盘上的原文件将保留。",
   retranscribeTitle: "重新转写？", retranscribeBody: "此录音的当前结果将被覆盖。处理可能需要一些时间，具体取决于录音长度和所选模型。",

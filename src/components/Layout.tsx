@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { Home, FileAudio, Mic, Server, Settings, Info } from "lucide-react";
+import { Home, Fingerprint, FileAudio, Mic, Server, Settings, Info } from "lucide-react";
 import DragDropOverlay from "./DragDropOverlay";
 import StatusBar from "./StatusBar";
 import { useT } from "../i18n";
@@ -11,6 +11,7 @@ export default function Layout() {
     // «Расшифровка» теперь объединена с историей: сверху очередь новых записей, ниже — все прошлые.
     { to: "/transcribe", label: t.nav.transcribe, icon: FileAudio, end: false },
     { to: "/dictation", label: t.nav.dictation, icon: Mic, end: false },
+    { to: "/voice-library", label: t.nav.voiceLibrary, icon: Fingerprint, end: false },
     { to: "/mcp", label: t.nav.mcp, icon: Server, end: false },
     { to: "/settings", label: t.nav.settings, icon: Settings, end: false },
     { to: "/about", label: t.nav.about, icon: Info, end: false },

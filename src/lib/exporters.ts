@@ -1,9 +1,30 @@
 import { save } from "@tauri-apps/plugin-dialog";
-import { saveText, savePdf, type PdfBlock } from "./api";
+import { saveText, savePdf, type PdfBlock, type TranscriptTurn } from "./api";
 import { parseReplicas, looksDiarized, speakerLabel } from "./diarize";
 import { tr } from "../i18n";
 
 type Names = Record<number, string> | undefined;
+
+/** UTF-8 BOM and quoted cells for Excel; neutralize formula-like user content. */
+export function timelineCsv(turns: TranscriptTurn[], names: Names): string {
+  const cell = (value: string | number) => {
+    const raw = String(value);
+    const safe = /^[\s]*[=+@\-]/u.test(raw) ? `'${raw}` : raw;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
+  const headers = tr().common.locale.startsWith("zh")
+    ? ["姓名", "开始时间（秒）", "结束时间（秒）", "内容"]
+    : tr().common.locale.startsWith("ru") ? ["Спикер", "Начало (секунды)", "Конец (секунды)", "Текст"]
+    : ["Speaker", "Start (seconds)", "End (seconds)", "Text"];
+  return "\uFEFF" + [headers, ...turns.map(turn => [speakerLabel(turn.speaker, names),
+    turn.startSec.toFixed(3), turn.endSec.toFixed(3), turn.text])]
+    .map(row => row.map(cell).join(",")).join("\r\n");
+}
+
+export async function exportTimelineCsv(name: string, turns: TranscriptTurn[], names?: Names) {
+  const path = await save({ defaultPath: `${name}.csv`, filters: [{ name: "CSV", extensions: ["csv"] }] });
+  if (path) await saveText(timelineCsv(turns, names), path);
+}
 
 function toTxt(text: string, names: Names): string {
   if (!looksDiarized(text)) return text;
