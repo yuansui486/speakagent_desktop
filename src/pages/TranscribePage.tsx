@@ -65,6 +65,8 @@ function StatusBadge({ status }: { status: Job["status"] }) {
         <Loader2 size={12} className="animate-spin" /> {t.transcribe.statusRunning}
       </span>
     );
+  if (status === "cancelled")
+    return <span className="inline-flex items-center gap-1 text-xs text-zinc-400"><Square size={12} /> {t.transcribe.statusCancelled}</span>;
   if (status === "error")
     return (
       <span className="inline-flex items-center gap-1 text-xs text-red-400">
@@ -269,11 +271,17 @@ export default function TranscribePage() {
               <span className="truncate">{selected.path}</span>
             </button>
           </div>
+          <StatusBadge status={selected.status} />
+          {selected.status === "running" && <button disabled={selected.stopping} onClick={() => cancel(selected.id)}
+            className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-zinc-300 disabled:opacity-50">
+            {selected.stopping ? t.transcribe.stopping : t.common.stop}
+          </button>}
           {selected.status === "done" && text && (
             <ExportMenu name={selected.name} text={text} names={selected.names} turns={selected.turns} />
           )}
           <button
             onClick={() => setConfirmDelete(selected.id)}
+            disabled={selected.status === "running"}
             className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-zinc-400 transition hover:bg-white/5 hover:text-red-400"
           >
             <Trash2 size={13} /> {t.common.delete}
@@ -281,6 +289,8 @@ export default function TranscribePage() {
         </div>
         <div className="min-h-0 flex-1">
           {selected.status === "done" && selected.diarize && selected.identifySpeakers && <VoiceMatches jobId={selected.id} />}
+          {selected.status === "cancelled" && <p role="status" className="p-3 text-xs text-zinc-400">{t.transcribe.cancelledHint}</p>}
+          {selected.stopError && <p role="alert" className="p-3 text-xs text-red-400">{t.transcribe.stopFailed}: {selected.stopError}</p>}
           {selected.identityWarning && <p role="alert" className="p-3 text-xs text-amber-400">{t.transcribe.identityWarning}: {selected.identityWarning}</p>}
           {selected.status === "error" ? (
             <div className="p-6 text-sm text-red-400">{selected.error}</div>
@@ -408,11 +418,13 @@ export default function TranscribePage() {
                 </span>
                 <button
                   onClick={() => cancel(running.id)}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-white/5 hover:text-red-400"
+                  disabled={running.stopping}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-white/5 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <Square size={11} /> {t.common.stop}
+                  <Square size={11} /> {running.stopping ? t.transcribe.stopping : t.common.stop}
                 </button>
               </div>
+              {running.stopError && <p role="alert" className="mt-2 break-words text-xs text-red-400">{t.transcribe.stopFailed}: {running.stopError}</p>}
               <div className="mt-2">
                 <ProgressBar stage={running.stage} done={running.done} total={running.total} />
                 <div className="mt-1 text-xs text-zinc-500">

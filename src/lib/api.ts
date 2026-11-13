@@ -127,7 +127,7 @@ export interface StoredJob {
   name: string;
   path: string;
   diarize: boolean;
-  status: "done" | "error";
+  status: "done" | "error" | "cancelled";
   text: string;
   error: string;
   createdAt: number;

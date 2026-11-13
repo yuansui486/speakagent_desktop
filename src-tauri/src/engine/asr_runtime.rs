@@ -61,6 +61,11 @@ pub fn record(provider: &str, reason: Option<String>) {
     };
 }
 
+pub fn last_snapshot() -> (Option<String>, Option<String>) {
+    let last = last_run().lock().unwrap();
+    (last.provider.clone(), last.reason.clone())
+}
+
 pub fn preference() -> String {
     super::store::get_setting("asr_provider")
         .filter(|p| matches!(p.as_str(), "auto" | "cpu" | "cuda"))
@@ -239,7 +244,11 @@ pub fn info() -> AccelerationInfo {
 }
 
 pub fn try_worker(files: &AsrFiles, threads: i32) -> Result<Option<CudaWorker>, String> {
-    if preference() == "cpu" {
+    try_worker_with_provider(files, threads, &preference())
+}
+
+pub fn try_worker_with_provider(files: &AsrFiles, threads: i32, provider: &str) -> Result<Option<CudaWorker>, String> {
+    if provider == "cpu" {
         return Ok(None);
     }
     if !cfg!(windows) {
@@ -279,7 +288,7 @@ pub fn try_worker(files: &AsrFiles, threads: i32) -> Result<Option<CudaWorker>, 
     } else {
         768
     };
-    if preference() == "auto" && device.free_memory_mb < minimum {
+    if provider == "auto" && device.free_memory_mb < minimum {
         return Err(format!(
             "Insufficient free VRAM: {} MB available, {minimum} MB required for automatic CUDA",
             device.free_memory_mb

@@ -36,7 +36,11 @@ enum Backend {
 
 impl Asr {
     pub fn load(f: &AsrFiles, num_threads: i32) -> Result<Self, String> {
-        match super::asr_runtime::try_worker(f, num_threads) {
+        Self::load_with_provider(f, num_threads, &super::asr_runtime::preference())
+    }
+
+    pub fn load_with_provider(f: &AsrFiles, num_threads: i32, provider: &str) -> Result<Self, String> {
+        match super::asr_runtime::try_worker_with_provider(f, num_threads, provider) {
             Ok(Some(worker)) => return Ok(Self { backend: Mutex::new(Backend::Cuda(worker)), files: f.clone(), threads: num_threads }),
             Ok(None) => super::asr_runtime::record("cpu", None),
             Err(reason) => super::asr_runtime::record("cpu", Some(reason)),

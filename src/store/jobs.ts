@@ -25,7 +25,7 @@ import {
   type TranscriptTurn,
 } from "../lib/api";
 
-export type JobStatus = "running" | "done" | "error";
+export type JobStatus = "running" | "done" | "error" | "cancelled";
 
 /** Состояние одного артефакта «Итогов» (саммари/протокол/задачи) для записи. */
 export interface ResultState {
@@ -44,6 +44,8 @@ export interface Job {
   path: string;
   diarize: boolean;
   status: JobStatus;
+  stopping?: boolean;
+  stopError?: string;
   stage: Progress["stage"];
   done: number;
   total: number;
@@ -116,6 +118,10 @@ interface JobsState {
 }
 
 let counter = 0;
+// A terminal UI state does not release the queue until its IPC has settled and
+// its final record is saved. In-flight cancellation replies belong to this run.
+const activeRuns = new Map<string, symbol>();
+const pendingCancels = new Map<symbol, Promise<void>>();
 
 function toStored(j: Job): StoredJob {
   return {
@@ -123,7 +129,7 @@ function toStored(j: Job): StoredJob {
     name: j.name,
     path: j.path,
     diarize: j.diarize,
-    status: (j.status === "error" ? "error" : "done") as "done" | "error",
+    status: j.status === "running" ? "cancelled" : j.status,
     text: j.text ?? j.partial ?? "",
     error: j.error ?? "",
     createdAt: j.startedAt,
@@ -207,7 +213,7 @@ export const useJobs = create<JobsState>((set, get) => ({
   pump: () => {
     const s = get();
     // одна тяжёлая расшифровка за раз
-    if (s.jobs.some((j) => j.status === "running") || s.queue.length === 0) return;
+    if (activeRuns.size > 0 || s.jobs.some((j) => j.status === "running") || s.queue.length === 0) return;
 
     const [item, ...rest] = s.queue;
     set({ queue: rest });
@@ -236,9 +242,12 @@ export const useJobs = create<JobsState>((set, get) => ({
     const patch = (p: Partial<Job>) =>
       set((st) => ({ jobs: st.jobs.map((j) => (j.id === id ? { ...j, ...p } : j)) }));
 
+    const runToken = Symbol(id);
+    activeRuns.set(id, runToken);
     const channel = new Channel<Progress>();
     channel.onmessage = (p) => {
       const cur = get().jobs.find((j) => j.id === id);
+      if (activeRuns.get(id) !== runToken || !cur || cur.status !== "running" || cur.stopping) return;
       patch({
         stage: p.stage,
         done: p.done,
@@ -250,10 +259,12 @@ export const useJobs = create<JobsState>((set, get) => ({
     };
 
     transcribe(item.path, item.diarize, id, channel, item.numSpeakers, item.identifySpeakers)
-      .then(({ text, speakerNames, turns, identityWarning }) => {
-        patch({ status: "done", text, partial: text, stage: "done", names: speakerNames, turns, identityWarning: identityWarning ?? undefined });
+      .then(async ({ text, speakerNames, turns, identityWarning }) => {
+        if (activeRuns.get(id) !== runToken) return;
+        // A completed result can win a concurrent Stop request; never erase it.
+        patch({ status: "done", stopping: false, stopError: undefined, error: undefined, text, partial: text, stage: "done", names: speakerNames, turns, identityWarning: identityWarning ?? undefined });
         const j = get().jobs.find((x) => x.id === id);
-        if (j) saveJob(toStored({ ...j, status: "done", text })).catch(() => {});
+        if (j) await saveJob(toStored(j)).catch(() => {});
         // авто-украшатель: только если включён и очередь пуста (не задерживаем другие файлы)
         if (text.trim() && get().queue.length === 0) {
           beautifyConfig()
@@ -263,25 +274,48 @@ export const useJobs = create<JobsState>((set, get) => ({
             .catch(() => {});
         }
       })
-      .catch((e) => {
-        const error = String(e);
-        patch({ status: "error", error });
+      .catch(async (e) => {
+        if (activeRuns.get(id) !== runToken) return;
+        const cur = get().jobs.find((j) => j.id === id);
+        const cancelled = String(e) === "cancelled" || !!cur?.stopping;
+        patch({ status: cancelled ? "cancelled" : "error", stopping: false,
+          error: cancelled ? undefined : String(e), text: undefined });
         const j = get().jobs.find((x) => x.id === id);
-        if (j) saveJob(toStored({ ...j, status: "error", error })).catch(() => {});
+        if (j) await saveJob(toStored(j)).catch(() => {});
       })
-      .finally(() => {
-        // следующий из очереди
+      .finally(async () => {
+        // A delayed Stop IPC still targets this job ID. Keep the attempt locked
+        // until it settles so it cannot accidentally stop a same-ID retry.
+        await pendingCancels.get(runToken);
+        pendingCancels.delete(runToken);
+        if (activeRuns.get(id) === runToken) activeRuns.delete(id);
+        // Only now has the actual backend task ended.
         get().pump();
       });
   },
 
   cancel: (id) => {
-    cancelTranscribe(id).catch(() => {});
+    const job = get().jobs.find(j => j.id === id);
+    if (!job || job.status !== "running" || job.stopping) return;
+    const runToken = activeRuns.get(id);
+    if (!runToken) return;
+    set(s => ({ jobs: s.jobs.map(j => j.id === id ? { ...j, stopping: true, stopError: undefined } : j) }));
+    const cancellation = cancelTranscribe(id).catch(e => {
+      // Ignore a late reply for a finished or restarted task.
+      if (activeRuns.get(id) !== runToken) return;
+      set(s => ({ jobs: s.jobs.map(j => j.id === id && j.status === "running"
+        ? { ...j, stopping: false, stopError: String(e) } : j) }));
+    });
+    // A second Stop request after a transport failure must also keep any earlier
+    // request locked until both have settled.
+    const previous = pendingCancels.get(runToken);
+    pendingCancels.set(runToken, previous
+      ? Promise.all([previous, cancellation]).then(() => {}) : cancellation);
   },
 
   retranscribe: (id) => {
     const s = get();
-    if (s.jobs.some((j) => j.status === "running")) return; // занято — кнопка будет отключена
+    if (activeRuns.size > 0 || s.jobs.some((j) => j.status === "running")) return; // занято — кнопка будет отключена
     const job = s.jobs.find((j) => j.id === id);
     if (!job) return;
 
@@ -302,6 +336,8 @@ export const useJobs = create<JobsState>((set, get) => ({
     const startedAt = Date.now();
     patch({
       status: "running",
+      stopping: false,
+      stopError: undefined,
       stage: "decoding",
       done: 0,
       total: 0,
@@ -315,9 +351,12 @@ export const useJobs = create<JobsState>((set, get) => ({
       stageStartedAt: startedAt,
     });
 
+    const runToken = Symbol(id);
+    activeRuns.set(id, runToken);
     const channel = new Channel<Progress>();
     channel.onmessage = (p) => {
       const cur = get().jobs.find((j) => j.id === id);
+      if (activeRuns.get(id) !== runToken || !cur || cur.status !== "running" || cur.stopping) return;
       patch({
         stage: p.stage,
         done: p.done,
@@ -329,18 +368,30 @@ export const useJobs = create<JobsState>((set, get) => ({
     };
 
     transcribe(job.path, job.diarize, id, channel, undefined, job.identifySpeakers)
-      .then(({ text, speakerNames, turns, identityWarning }) => {
-        patch({ status: "done", text, partial: text, stage: "done", names: speakerNames, turns, identityWarning: identityWarning ?? undefined });
+      .then(async ({ text, speakerNames, turns, identityWarning }) => {
+        if (activeRuns.get(id) !== runToken) return;
+        // A completed result can win a concurrent Stop request; never erase it.
+        patch({ status: "done", stopping: false, stopError: undefined, error: undefined, text, partial: text, stage: "done", names: speakerNames, turns, identityWarning: identityWarning ?? undefined });
         const j = get().jobs.find((x) => x.id === id);
-        if (j) saveJob(toStored({ ...j, status: "done", text })).catch(() => {});
+        if (j) await saveJob(toStored(j)).catch(() => {});
       })
-      .catch((e) => {
-        const error = String(e);
-        patch({ status: "error", error });
+      .catch(async (e) => {
+        if (activeRuns.get(id) !== runToken) return;
+        const cur = get().jobs.find((j) => j.id === id);
+        const cancelled = String(e) === "cancelled" || !!cur?.stopping;
+        patch({ status: cancelled ? "cancelled" : "error", stopping: false,
+          error: cancelled ? undefined : String(e), text: undefined });
         const j = get().jobs.find((x) => x.id === id);
-        if (j) saveJob(toStored({ ...j, status: "error", error })).catch(() => {});
+        if (j) await saveJob(toStored(j)).catch(() => {});
       })
-      .finally(() => get().pump());
+      .finally(async () => {
+        // A delayed Stop IPC still targets this job ID. Keep the attempt locked
+        // until it settles so it cannot accidentally stop a same-ID retry.
+        await pendingCancels.get(runToken);
+        pendingCancels.delete(runToken);
+        if (activeRuns.get(id) === runToken) activeRuns.delete(id);
+        get().pump();
+      });
   },
 
   rename: (id, speaker, name) => {

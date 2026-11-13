@@ -181,6 +181,13 @@ fn revision(path: &str) -> Result<String, String> {
 fn extractor(model_id: &str, threads: i32) -> Result<(SpeakerEmbeddingExtractor, String), String> {
     validate_model(model_id)?;
     models::ensure(model_id, |_, _| {})?;
+    extractor_prepared(model_id, threads)
+}
+
+// Matching runs in an inference-only child. Preparation belongs to its parent;
+// never start a second, independently locked download from this process.
+fn extractor_prepared(model_id: &str, threads: i32) -> Result<(SpeakerEmbeddingExtractor, String), String> {
+    validate_model(model_id)?;
     let path = models::embedding_model_file(model_id).ok_or_else(|| err("声纹模型文件不可用。", "Voiceprint model is unavailable."))?;
     let revision = revision(&path)?;
     let extractor = SpeakerEmbeddingExtractor::create(&SpeakerEmbeddingExtractorConfig {
@@ -349,7 +356,7 @@ pub fn match_speakers(samples: &[f32], segs: &[Segment], raw_to_display: &HashMa
     if count == 0 { return Ok(display.keys().map(|&speaker| unknown(speaker,"empty_library",None)).collect()); }
     if display.is_empty() { return Ok(Vec::new()); }
     if samples.iter().any(|sample| !sample.is_finite()) { return Err("Non-finite voice matching audio".into()); }
-    let (extractor,revision) = extractor(model_id, 4)?;
+    let (extractor,revision) = extractor_prepared(model_id, 4)?;
     cancelled(cancel)?;
     let candidates = candidates(&c,model_id,&revision,extractor.dim() as usize)?;
     if candidates.is_empty() { return Ok(display.keys().map(|&speaker| unknown(speaker,"model_mismatch",None)).collect()); }

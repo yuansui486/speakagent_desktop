@@ -221,40 +221,10 @@ fn resource_usage() -> Usage {
     }
 }
 
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Progress {
-    stage: String, // "decoding" | "diarizing" | "transcribing" | "done"
-    done: usize,
-    total: usize,
-    partial: String,
-    /// Длительность записи, сек (известна после декода; 0 до того) — для истории.
-    audio_sec: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    speaker_names: Option<std::collections::HashMap<i32, String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    turns: Option<Vec<engine::diarize::TranscriptTurn>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    identity_warning: Option<String>,
-}
+use engine::transcription::{Progress, TranscriptionResult};
 
-/// Порог кластеризации диаризации (используется, когда число спикеров неизвестно).
-/// Выше → меньше спикеров. Подбирается на реальных файлах; при известном числе
-/// спикеров (num_speakers) не используется вовсе.
-const CLUSTER_THRESHOLD: f32 = 0.8;
-
-#[derive(Default, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TranscriptionResult {
-    text: String,
-    speaker_names: std::collections::HashMap<i32, String>,
-    turns: Vec<engine::diarize::TranscriptTurn>,
-    identity_warning: Option<String>,
-}
-
-/// Расшифровка файла: декод → (опц. диаризация) → GigaAM. Прогресс через Channel.
-/// `num_speakers`: Some(n>0) — точное число говорящих (надёжнее авто); None/0 — авто.
-/// Тяжёлая CPU-работа уходит в blocking-поток, чтобы не морозить UI.
+/// Prepare shared models in the app, then supervise an interruptible inference
+/// process. The worker never commits history, identity snapshots or ETA data.
 #[tauri::command]
 async fn transcribe(
     path: String,
@@ -264,164 +234,80 @@ async fn transcribe(
     job_id: String,
     on_progress: tauri::ipc::Channel<Progress>,
 ) -> Result<TranscriptionResult, String> {
-    let cancel = Arc::new(AtomicBool::new(false));
-    cancels().lock().unwrap().insert(job_id.clone(), cancel.clone());
+    let cancel = engine::task_cancel::begin(&job_id)?;
     let analysis_job_id = job_id.clone();
-
+    let task_cancel = cancel.clone();
     let out = tauri::async_runtime::spawn_blocking(move || {
-        // A cancelled or failed retry must not display a previous run's identity snapshot.
+        let cancel = task_cancel;
+        let check = || if cancel.load(Ordering::Relaxed) { Err("cancelled".to_string()) } else { Ok(()) };
+        check()?;
         engine::voiceprints::save_job_matches(&analysis_job_id, &[])?;
-        let send = |stage: &str, done: usize, total: usize, partial: &str| {
-            let _ = on_progress.send(Progress {
-                stage: stage.into(),
-                done,
-                total,
-                partial: partial.to_string(),
-                audio_sec: 0.0,
-                speaker_names: None,
-                turns: None,
-                identity_warning: None,
-            });
+        let send = |stage: &str, done: usize, total: usize| {
+            if !cancel.load(Ordering::Relaxed) {
+                let _ = on_progress.send(Progress { stage: stage.into(), done, total,
+                    partial: String::new(), audio_sec: 0.0, speaker_names: None, turns: None, identity_warning: None });
+            }
         };
-
         let embedding_id = engine::models::diarization_embedding_id();
-        let files = engine::models::active_asr_files().ok_or(
-            crate::engine::localization::error("Recognition model is not installed. Open Settings and choose a model."),
-        )?;
+        let asr_id = engine::models::active_id();
+        let files = engine::models::active_asr_files().ok_or_else(||
+            engine::localization::error("Recognition model is not installed. Open Settings and choose a model."))?;
+        let provider = engine::asr_runtime::preference();
         let dependencies = if diarize { vec!["diar-seg", embedding_id, "vad"] } else { vec!["vad"] };
         for id in dependencies {
-            if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
-            send("preparing", 0, 0, "");
+            check()?;
+            send("preparing", 0, 0);
             let prepared = engine::models::ensure_cancelable(id,
-                |done, total| send("preparing", done as usize, total as usize, ""), Some(&cancel));
-            if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
-            prepared.map_err(|error| format!("{} ({id}): {error}", engine::localization::text("Could not prepare model", "无法准备辅助模型")))?;
+                |done, total| send("preparing", done as usize, total as usize), Some(&cancel));
+            check()?;
+            prepared.map_err(|error| format!("{} ({id}): {error}",
+                engine::localization::text("Could not prepare model", "无法准备辅助模型")))?;
         }
-        if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
-        // A one-time model download is not recurring decode/model-load overhead.
-        let started = std::time::Instant::now();
-        send("decoding", 0, 0, "");
-        let samples = engine::decode::decode_to_16k_mono(&path)?;
-        if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
-        let audio_sec = samples.len() as f64 / 16000.0;
-        let asr = engine::asr::Asr::load(&files, num_threads())?;
-        if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
-        // фиксированная часть (декод + загрузка модели) — калибруем отдельно от RTF
-        let overhead_sec = started.elapsed().as_secs_f64();
-        let processing_started = std::time::Instant::now();
-        // VAD для нарезки по речи (границы в тишине). Нет модели → слепые окна.
-        let vad = engine::models::vad();
-        let vad_ref = vad.as_deref();
-
-        // Диаризация (если нужна) — по всему файлу, до ASR.
-        let segs = if diarize {
-            send("diarizing", 0, 0, "");
-            let (seg, emb) = engine::models::diarization_for(embedding_id).ok_or(
-                crate::engine::localization::error("Speaker recognition models are not installed. Download them in Settings."),
-            )?;
-            let n_spk = num_speakers.unwrap_or(0).max(0);
-            Some(engine::diarize::diarize(
-                &seg,
-                &emb,
-                &samples,
-                num_threads(),
-                CLUSTER_THRESHOLD,
-                n_spk,
-            )?)
-        } else {
-            None
+        check()?;
+        let request = engine::transcription::Request {
+            path, files, embedding_id: embedding_id.into(),
+            diarization: if diarize { Some(engine::models::diarization_for(embedding_id).ok_or_else(||
+                engine::localization::error("Speaker recognition models are not installed. Download them in Settings."))?) } else { None },
+            vad: engine::models::vad(),
+            punctuation: if engine::models::needs_ru_punct(&asr_id) { engine::models::punct() } else { None },
+            num_threads: num_threads(), num_speakers: num_speakers.unwrap_or(0).max(0),
+            identify_speakers: identify_speakers.unwrap_or(true), provider,
         };
-
-        if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
-
-        // Один проход ASR по всему файлу со словами+таймкодами (полный контекст).
-        let mut words = asr.transcribe_words(&samples, vad_ref, &cancel, |done, total, partial| {
-            send("transcribing", done, total, partial);
-        });
-
-        // Внешняя пунктуация (RUPunct) — fallback только для русских моделей БЕЗ своей
-        // пунктуации. GigaAM v3 (дефолт) пунктуирует сам, Whisper тоже — тогда шаг пропускается.
-        if !cancel.load(Ordering::Relaxed)
-            && engine::models::needs_ru_punct(&engine::models::active_id())
-        {
-            if let Some(p) = engine::models::punct()
-                .and_then(|(m, t)| engine::punct::Punctuator::load(&m, &t))
-            {
-                send("punctuating", 0, 0, "");
-                let texts: Vec<String> = words.iter().map(|w| w.text.clone()).collect();
-                for (w, r) in words.iter_mut().zip(p.restore(&texts)) {
-                    w.text = r;
-                }
+        let output = engine::task_process::run(&request, &cancel, |progress| {
+            if !cancel.load(Ordering::Relaxed) { let _ = on_progress.send(progress); }
+        })?;
+        // Cancellation and success share one commit boundary. A stop accepted
+        // before this point cannot produce a successful record or a done event.
+        engine::task_cancel::finish(&analysis_job_id, &cancel, || {
+            let mut result = output.result;
+            if let Err(error) = engine::voiceprints::save_job_matches(&analysis_job_id, &output.matches) {
+                result.identity_warning = Some(error);
             }
-        }
-
-        // Привязка слов к спикерам (диаризация) либо плоский текст.
-        if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
-        let mut speaker_names = std::collections::HashMap::new();
-        let mut turns = Vec::new();
-        let mut identity_warning = None;
-        let mut matches = Vec::new();
-        let out = match &segs {
-            Some(segs) => {
-                let transcript = engine::diarize::words_to_transcript(&words, segs);
-                if identify_speakers.unwrap_or(true) {
-                    send("matching", 0, 0, &transcript.text);
-                    match engine::voiceprints::match_speakers(&samples, segs,
-                        &transcript.raw_to_display, embedding_id, &cancel) {
-                        Ok(found) => matches = found,
-                        Err(error) => identity_warning = Some(error),
-                    }
-                    for found in &matches {
-                        if let Some(name) = &found.name { speaker_names.insert(found.speaker, name.clone()); }
-                    }
-                }
-                turns = transcript.turns;
-                transcript.text
+            if let Some(provider) = output.provider {
+                engine::asr_runtime::record(&provider, output.fallback_reason);
             }
-            None => engine::asr::join_text(&words),
-        };
-        if cancel.load(Ordering::Relaxed) { return Ok(TranscriptionResult::default()); }
-        if let Err(error) = engine::voiceprints::save_job_matches(&analysis_job_id, &matches) {
-            identity_warning = Some(error);
-        }
-
-        // Калибровка ETA (если не отменено): RTF — раздельно по режимам (диаризация
-        // заметно дороже), оверхед (декод+загрузка моделей) — своим ключом.
-        if !cancel.load(Ordering::Relaxed) && audio_sec > 30.0 {
-            let rtf = processing_started.elapsed().as_secs_f64() / audio_sec;
-            let key = if diarize { "rtf_diar" } else { "rtf_plain" };
-            let _ = engine::store::set_setting(key, &format!("{rtf:.4}"));
-            let _ = engine::store::set_setting("measured_overhead", &format!("{overhead_sec:.1}"));
-        }
-
-        // финальное сообщение несёт реальную длительность записи (для истории)
-        let _ = on_progress.send(Progress {
-            stage: "done".into(),
-            done: 1,
-            total: 1,
-            partial: out.clone(),
-            audio_sec: audio_sec as f32,
-            speaker_names: Some(speaker_names.clone()),
-            turns: Some(turns.clone()),
-            identity_warning: identity_warning.clone(),
-        });
-        Ok::<TranscriptionResult, String>(TranscriptionResult { text: out, speaker_names, turns, identity_warning })
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-
-    cancels().lock().unwrap().remove(&job_id);
-    out
+            if output.audio_sec > 30.0 {
+                let rtf = output.processing_sec / output.audio_sec;
+                let key = if diarize { "rtf_diar" } else { "rtf_plain" };
+                let _ = engine::store::set_setting(key, &format!("{rtf:.4}"));
+                let _ = engine::store::set_setting("measured_overhead", &format!("{:.1}", output.overhead_sec));
+            }
+            let _ = on_progress.send(Progress { stage: "done".into(), done: 1, total: 1,
+                partial: result.text.clone(), audio_sec: output.audio_sec as f32,
+                speaker_names: Some(result.speaker_names.clone()), turns: Some(result.turns.clone()),
+                identity_warning: result.identity_warning.clone() });
+            Ok(result)
+        })
+    }).await;
+    // Also clean up a panic/JoinError, without removing a newer run's token.
+    engine::task_cancel::cleanup(&job_id, &cancel);
+    out.map_err(|e| e.to_string())?
 }
 
-/// Отменить активную расшифровку (флаг проверяется в цикле ASR).
 #[tauri::command]
 fn cancel_transcribe(job_id: String) {
-    if let Some(f) = cancels().lock().unwrap().get(&job_id) {
-        f.store(true, Ordering::Relaxed);
-    }
+    engine::task_cancel::cancel(&job_id);
 }
-
 fn num_threads() -> i32 {
     std::thread::available_parallelism()
         .map(|n| (n.get() as i32).clamp(1, 16))

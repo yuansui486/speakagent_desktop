@@ -25,3 +25,6 @@ pub mod localization;
 pub mod text;
 pub mod voiceprints;
 pub mod voice_recording;
+pub mod transcription;
+pub mod task_process;
+pub mod task_cancel;

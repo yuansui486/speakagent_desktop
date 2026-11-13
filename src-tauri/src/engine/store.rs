@@ -13,7 +13,7 @@ pub struct StoredJob {
     pub name: String,
     pub path: String,
     pub diarize: bool,
-    pub status: String, // "done" | "error"
+    pub status: String, // "done" | "error" | "cancelled"
     pub text: String,
     pub error: String,
     pub created_at: i64,
